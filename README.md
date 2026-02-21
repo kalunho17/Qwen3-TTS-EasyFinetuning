@@ -60,6 +60,8 @@ python quicktest.py \
 
 ## Acknowledgments
 
-This repository is based on the [Qwen3-TTS](https://github.com/Qwen/Qwen3-TTS) repository.
-The ASR model is based on the [Qwen3-ASR](https://github.com/Qwen/Qwen3-ASR) repository.
-Thanks to the [rekuenkdr](https://github.com/rekuenkdr) for the [Training Preset](https://github.com/QwenLM/Qwen3-TTS/issues/39#issuecomment-3796980965)
+This repository is based on the [Qwen3-TTS](https://github.com/qwenLM/Qwen3-tts) repository.
+
+The ASR model is based on the [Qwen3-ASR](https://github.com/qwenLM/Qwen3-asr) repository.
+
+Thanks to the [rekuenkdr](https://github.com/rekuenkdr) for the [Training Preset](https://github.com/qwenLM/Qwen3-tts/issues/39#issuecomment-3796980965)
