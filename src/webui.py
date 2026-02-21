@@ -94,6 +94,7 @@ def start_training(speaker_name, init_model, model_source, batch_size, lr, epoch
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = gpu_id.replace("cuda:", "") if gpu_id != "cpu" else ""
     env["PYTHONPATH"] = "src:" + env.get("PYTHONPATH", "")
+    env["PYTHONUNBUFFERED"] = "1"  # Force unbuffered Python output for real-time logs
     
     prep_cmd = [
         "python", "src/prepare_data.py", 
@@ -155,6 +156,9 @@ def read_logs():
                     break
                 elif "Resumed from checkpoint" in line:
                     status_summary = f"🔄 **{line.strip()}**"
+                    break
+                elif "Loading checkpoint shards" in line or "Loading" in line:
+                    status_summary = f"⏬ **{line.strip()}**"
                     break
                 
             log_tail = "".join(lines[-30:])

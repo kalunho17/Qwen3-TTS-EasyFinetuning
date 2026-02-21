@@ -65,3 +65,9 @@ This repository is based on the [Qwen3-TTS](https://github.com/qwenLM/Qwen3-tts)
 The ASR model is based on the [Qwen3-ASR](https://github.com/qwenLM/Qwen3-asr) repository.
 
 Thanks to the [rekuenkdr](https://github.com/rekuenkdr) for the [Training Preset](https://github.com/qwenLM/Qwen3-tts/issues/39#issuecomment-3796980965)
+
+## Star History
+
+If you found this project helpful, please don't forget to give it a star. It's my biggest encouragement and will help the project continue to grow.
+
+[![Star History Chart](https://api.star-history.com/svg?repos=mozi1924/Qwen3-TTS-EasyFinetuning&type=date&legend=top-left)](https://www.star-history.com/#mozi1924/Qwen3-TTS-EasyFinetuning&type=date&legend=top-left)
