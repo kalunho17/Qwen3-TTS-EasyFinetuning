@@ -21,50 +21,54 @@ def resample_audio(src_path, dest_path, target_sr=24000):
         print(f"Error converting audio {src_path}: {e}")
         return False
 
-def split_audio(audio_path, output_dir_base, filename_prefix, max_duration_ms=15000):
+def split_audio(audio_path, output_dir_base, filename_prefix, max_duration_ms=15000, min_duration_ms=1000):
     try:
         audio = AudioSegment.from_file(audio_path)
     except Exception as e:
         print(f"Error reading {audio_path}: {e}")
         return []
-        
-    if len(audio) <= max_duration_ms:
-        out_name = f"{filename_prefix}.wav"
-        out_path = os.path.join(output_dir_base, out_name)
-        if not os.path.exists(out_path):
-            audio.export(out_path, format="wav")
-        return [out_path]
+
+    # Strip leading/trailing silence & split on mid-silences for ALL chunks
+    # We use a dynamic threshold: audio.dBFS - 16 dB often works great
+    thresh = audio.dBFS - 16 if audio.dBFS > -50 else -40
     
-    chunks = silence.split_on_silence(audio, min_silence_len=500, silence_thresh=-40, keep_silence=200)
-    segment_paths = []
+    chunks = silence.split_on_silence(
+        audio, 
+        min_silence_len=400, 
+        silence_thresh=thresh,
+        keep_silence=200
+    )
     
     if not chunks:
-        for i in range(0, len(audio), max_duration_ms):
-            chunk = audio[i:i+max_duration_ms]
-            if len(chunk) < 500: continue
-            out_name = f"{filename_prefix}_cut{i:03d}.wav"
+        # Fallback to the whole audio if no silence could be detected
+        chunks = [audio]
+        
+    segment_paths = []
+    
+    for i, chunk in enumerate(chunks):
+        # Drop segments that are too short or empty
+        if len(chunk) < min_duration_ms:
+            continue
+            
+        # Hard cut segments that are still too long
+        if len(chunk) > max_duration_ms:
+            for j in range(0, len(chunk), max_duration_ms):
+                sub_chunk = chunk[j:j+max_duration_ms]
+                if len(sub_chunk) < min_duration_ms:
+                    continue
+                
+                out_name = f"{filename_prefix}_seg{i:03d}_cut{j:03d}.wav"
+                out_path = os.path.join(output_dir_base, out_name)
+                if not os.path.exists(out_path):
+                    sub_chunk.export(out_path, format="wav")
+                segment_paths.append(out_path)
+        else:
+            out_name = f"{filename_prefix}_seg{i:03d}.wav"
             out_path = os.path.join(output_dir_base, out_name)
             if not os.path.exists(out_path):
                 chunk.export(out_path, format="wav")
             segment_paths.append(out_path)
-    else:
-        for i, chunk in enumerate(chunks):
-            if len(chunk) < 500: continue
-            if len(chunk) > max_duration_ms:
-                for j in range(0, len(chunk), max_duration_ms):
-                    sub_chunk = chunk[j:j+max_duration_ms]
-                    if len(sub_chunk) < 500: continue
-                    out_name = f"{filename_prefix}_seg{i:03d}_cut{j:03d}.wav"
-                    out_path = os.path.join(output_dir_base, out_name)
-                    if not os.path.exists(out_path):
-                        sub_chunk.export(out_path, format="wav")
-                    segment_paths.append(out_path)
-            else:
-                out_name = f"{filename_prefix}_seg{i:03d}.wav"
-                out_path = os.path.join(output_dir_base, out_name)
-                if not os.path.exists(out_path):
-                    chunk.export(out_path, format="wav")
-                segment_paths.append(out_path)
+            
     return segment_paths
 
 def run_pipeline(input_dir, ref_audio, output_dir, model_id="Qwen/Qwen3-ASR-1.7B", batch_size=16):
