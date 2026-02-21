@@ -7,4 +7,8 @@ librosa==0.11.0
 soundfile==0.13.1
 tensorboard==2.20.0
 safetensors==0.7.0
+gradio==4.40.0
+pydub==0.25.1
+modelscope==1.34.0
 git+https://github.com/QwenLM/Qwen3-TTS.git
+git+https://github.com/QwenLM/Qwen3-ASR.git

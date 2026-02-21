@@ -22,14 +22,21 @@ pip install -r requirements.txt
 pip install flash-attn==2.8.3 --no-build-isolation
 ```
 
-### 2. Data Preparation
+### 2. Using the WebUI (Recommended)
+You can now run the complete pipeline via a Gradio WebUI:
+```bash
+python webui.py
+```
+This will start a web server on port `7860`. You can prepare data, train your custom voice, and test it all from the browser. Supports HuggingFace and ModelScope model downloads.
+
+### 3. Data Preparation (CLI)
 Create a directory named `data` and put your fine-tuning data in `data/tts_train.jsonl`.
 The jsonl format should look like this:
 ```json
 {"audio": "/path/to/wav/1.wav", "text": "Transcript of the audio.", "ref_audio": "/path/to/wav/1.wav"}
 ```
 
-### 3. Training
+### 4. Training
 Run the training script by providing the path to your raw jsonl file and the speaker name.
 ```bash
 chmod +x train.sh
@@ -41,7 +48,7 @@ The script will automatically:
 2. Start Tensorboard background process on port 6006.
 3. Finetune the TTS model and save checkpoints to `output/`.
 
-### 4. Testing
+### 5. Testing
 Once the fine-tuning is completed, you can use `quicktest.py` to synthesize new speech:
 ```bash
 python quicktest.py \

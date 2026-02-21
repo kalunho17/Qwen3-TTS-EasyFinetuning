@@ -20,4 +20,6 @@ RUN pip install https://github.com/Dao-AILab/flash-attention/releases/download/v
 
 COPY . /workspace/
 
-CMD ["/bin/bash"]
+EXPOSE 7860 6006
+
+CMD ["python", "webui.py"]
