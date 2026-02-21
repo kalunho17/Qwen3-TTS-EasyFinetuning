@@ -1,4 +1,5 @@
 __pycache__/
+webui_output.wav
 *.py[cod]
 *$py.class
 *.so
