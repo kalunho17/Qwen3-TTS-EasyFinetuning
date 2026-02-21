@@ -1,5 +1,7 @@
 __pycache__/
 webui_output.wav
+raw-dataset/*
+final-dataset/*
 *.py[cod]
 *$py.class
 *.so

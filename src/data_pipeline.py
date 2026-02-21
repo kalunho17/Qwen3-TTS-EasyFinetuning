@@ -71,7 +71,7 @@ def split_audio(audio_path, output_dir_base, filename_prefix, max_duration_ms=15
             
     return segment_paths
 
-def run_pipeline(input_dir, ref_audio, output_dir, model_id="Qwen/Qwen3-ASR-1.7B", batch_size=16):
+def run_pipeline(input_dir, ref_audio, output_dir, model_id="Qwen/Qwen3-ASR-1.7B", batch_size=16, progress=None):
     audio_out_dir = os.path.join(output_dir, "audio")
     audio_24k_dir = os.path.join(output_dir, "audio_24k")
     os.makedirs(audio_out_dir, exist_ok=True)
@@ -79,6 +79,7 @@ def run_pipeline(input_dir, ref_audio, output_dir, model_id="Qwen/Qwen3-ASR-1.7B
     
     final_jsonl = os.path.join(output_dir, "tts_train.jsonl")
     
+    if progress: progress(0.01, desc="Preparing Reference Audio...")
     print("Preparing Reference Audio...")
     ref_24k_path = os.path.join(audio_24k_dir, "ref_24k.wav")
     if not os.path.exists(ref_audio) and ref_audio != "":
@@ -86,6 +87,7 @@ def run_pipeline(input_dir, ref_audio, output_dir, model_id="Qwen/Qwen3-ASR-1.7B
     if ref_audio:
         resample_audio(ref_audio, ref_24k_path)
     
+    if progress: progress(0.1, desc=f"Loading Model: {model_id} (Downloading might take a while...)")
     print(f"Loading ASR Model: {model_id}")
     model_dir = snapshot_download(model_id)
     kwargs = {"dtype": torch.bfloat16, "device_map": "auto"}
@@ -97,15 +99,20 @@ def run_pipeline(input_dir, ref_audio, output_dir, model_id="Qwen/Qwen3-ASR-1.7B
     wav_files = sorted(glob.glob(os.path.join(input_dir, "*.wav")))
     all_segments = []
     
+    if progress: progress(0.3, desc="Splitting audio files...")
     print("Splitting audio files...")
-    for wav_path in tqdm(wav_files, desc="Splitting"):
+    for idx, wav_path in enumerate(tqdm(wav_files, desc="Splitting")):
+        if progress: progress(0.3 + 0.2 * (idx / len(wav_files)), desc=f"Splitting {idx+1}/{len(wav_files)}")
         prefix = os.path.splitext(os.path.basename(wav_path))[0]
         segs = split_audio(wav_path, audio_out_dir, prefix)
         all_segments.extend([os.path.abspath(s) for s in segs])
     
     final_entries = []
+    if progress: progress(0.5, desc="Transcribing and processing data...")
     print("Transcribing and processing data...")
-    for i in tqdm(range(0, len(all_segments), batch_size), desc="ASR processing"):
+    total_batches = len(all_segments) // batch_size + (1 if len(all_segments) % batch_size else 0)
+    for batch_idx, i in enumerate(tqdm(range(0, len(all_segments), batch_size), desc="ASR processing")):
+        if progress: progress(0.5 + 0.49 * (batch_idx / max(total_batches, 1)), desc=f"ASR transcribing batch {batch_idx+1}/{total_batches}")
         batch_paths = all_segments[i : i + batch_size]
         try:
             results = asr_model.transcribe(audio=batch_paths)
@@ -135,6 +142,7 @@ def run_pipeline(input_dir, ref_audio, output_dir, model_id="Qwen/Qwen3-ASR-1.7B
         for entry in final_entries:
             f_out.write(json.dumps(entry, ensure_ascii=False) + "\n")
             
+    if progress: progress(1.0, desc="Pipeline Completed!")
     return True, f"Successfully processed {len(final_entries)} segments. Saved to {final_jsonl}"
 
 if __name__ == "__main__":

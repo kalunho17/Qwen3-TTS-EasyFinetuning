@@ -43,7 +43,7 @@ def is_process_running(keyword):
     except: return False
 
 # ----------------- Data Pipeline -----------------
-def run_data_prep(input_dir, ref_audio, speaker_name, model_id, asr_source, gpu_id):
+def run_data_prep(input_dir, ref_audio, speaker_name, model_id, asr_source, gpu_id, progress=gr.Progress()):
     if not speaker_name.strip(): return "Please specify a Speaker Name.", gr.update()
     output_dir = os.path.join("final-dataset", speaker_name.strip())
     os.makedirs(output_dir, exist_ok=True)
@@ -61,7 +61,8 @@ def run_data_prep(input_dir, ref_audio, speaker_name, model_id, asr_source, gpu_
             ref_audio=ref_audio,
             output_dir=output_dir,
             model_id=model_id,
-            batch_size=16
+            batch_size=16,
+            progress=progress
         )
         return msg, gr.update(choices=get_datasets(), value=speaker_name.strip())
     except Exception as e:
@@ -146,8 +147,19 @@ def read_logs():
     if os.path.exists("training_log.txt"):
         with open("training_log.txt", "r") as f:
             lines = f.readlines()
-            return "".join(lines[-30:])
-    return "No logs available."
+            
+            status_summary = "Initializing / Downloading models..."
+            for line in reversed(lines):
+                if "Epoch" in line and "Step" in line and "Loss" in line:
+                    status_summary = f"🚀 **Training Progress**: {line.strip()}"
+                    break
+                elif "Resumed from checkpoint" in line:
+                    status_summary = f"🔄 **{line.strip()}**"
+                    break
+                
+            log_tail = "".join(lines[-30:])
+            return status_summary, log_tail
+    return "Idle", "No logs available."
 
 # ----------------- Inference -----------------
 def load_model(model_path, gpu_id):
@@ -193,17 +205,19 @@ def unload_model():
         return "Model unloaded and VRAM cleared."
     return "No model was loaded."
 
-def run_inference(model_path, speaker, text, gpu_id):
+def run_inference(model_path, speaker, text, gpu_id, progress=gr.Progress()):
     global global_tts_model, global_tts_model_path
     if not model_path:
         return None, "Please select a model checkpoint."
         
     if global_tts_model_path != model_path or global_tts_model is None:
+        progress(0.1, desc="Loading Model into VRAM...")
         load_msg = load_model(model_path, gpu_id)
         if "Failed" in load_msg:
             return None, load_msg
             
     try:
+        progress(0.5, desc="Synthesizing audio...")
         import soundfile as sf
         wavs, sr = global_tts_model.generate_custom_voice(
             text=text,
@@ -211,6 +225,7 @@ def run_inference(model_path, speaker, text, gpu_id):
         )
         out_path = "webui_output.wav"
         sf.write(out_path, wavs[0], sr)
+        progress(1.0, desc="Done!")
         return out_path, "Inference successful."
     except Exception as e:
         return None, f"Inference error: {e}"
@@ -252,8 +267,8 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning") as app:
             with gr.Row():
                 with gr.Column():
                     speaker_name_input = gr.Textbox(label="Speaker Name (Required)", value="my_speaker", placeholder="e.g. crypto")
-                    input_dir = gr.Textbox(label="Raw WAVs Directory", value="/workspace/dataset(nomark)", placeholder="Directory containing wav files")
-                    ref_audio = gr.Textbox(label="Reference Audio Path (For TTS)", value="/workspace/dataset(nomark)/ref.wav", placeholder="Clear sounding audio clip (~3-10s)")
+                    input_dir = gr.Textbox(label="Raw WAVs Directory", value="/workspace/raw-dataset", placeholder="Directory containing wav files")
+                    ref_audio = gr.Textbox(label="Reference Audio Path (For TTS)", value="/workspace/raw-dataset/ref.wav", placeholder="Clear sounding audio clip (~3-10s)")
                 
                 with gr.Column():
                     asr_model = gr.Dropdown(["Qwen/Qwen3-ASR-1.7B", "Qwen/Qwen3-ASR-0.6B"], label="ASR Model", value="Qwen/Qwen3-ASR-1.7B")
@@ -285,30 +300,45 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning") as app:
                 train_btn = gr.Button("Start Training", variant="primary")
                 stop_btn = gr.Button("Stop Training", variant="stop")
             
-            train_status = gr.Textbox(label="Training Status", lines=1)
+            with gr.Row():
+                train_status = gr.Textbox(label="Process Status", lines=1)
+                parsed_status = gr.Markdown("Idle")
+                
             log_box = gr.Textbox(label="Live Training Logs", lines=10)
-            refresh_log_btn = gr.Button("Refresh Logs")
+            
+            # Auto refresh logs using gr.Timer
+            with gr.Row():
+                refresh_log_btn = gr.Button("Manual Refresh Logs")
+                auto_refresh = gr.Checkbox(label="Auto Refresh Logs (Every 3s)", value=False)
+                
+            timer = gr.Timer(3, active=False)
+            auto_refresh.change(lambda x: gr.Timer(active=x), auto_refresh, timer)
+            timer.tick(fn=read_logs, outputs=[parsed_status, log_box])
             
         with gr.Tab("3. Inference / Testing"):
             gr.Markdown("Test your trained checkpoints. Model stays loaded in VRAM once selected.")
             with gr.Row():
-                with gr.Column():
+                # Left Column: Inputs
+                with gr.Column(scale=1):
                     with gr.Row():
-                        ckpt_dropdown = gr.Dropdown(get_checkpoints(), label="Select Checkpoint", value=None, scale=3)
-                        ckpt_refresh_btn = gr.Button("🔄 Refresh", scale=1)
+                        ckpt_dropdown = gr.Dropdown(get_checkpoints(), label="Select Checkpoint", value=None, scale=4)
+                        ckpt_refresh_btn = gr.Button("🔄", scale=1)
                         
                     test_speaker = gr.Textbox(label="Speaker Name (Auto-filled)", value="my_speaker")
+                    test_text = gr.Textbox(label="Text to Synthesize", value="Hello, this is a test from my custom voice.", lines=4)
                     gpu_infer = gr.Dropdown(gpus_list, label="GPU Device", value=default_gpu)
+                    
+                    test_btn = gr.Button("Synthesize Audio", variant="primary")
                 
-                with gr.Column():
+                # Right Column: Outputs
+                with gr.Column(scale=1):
+                    audio_out = gr.Audio(label="Generated Audio", interactive=False)
+                    inference_status = gr.Textbox(label="Inference Status", lines=1)
+                    
+                    gr.Markdown("---")
+                    gr.Markdown("### Memory Management")
                     unload_btn = gr.Button("Unload Model from VRAM", variant="stop")
                     unload_status = gr.Textbox(label="Unload Status", lines=1)
-            
-            test_text = gr.Textbox(label="Text to Synthesize", value="Hello, this is a test from my custom voice.", lines=3)
-            test_btn = gr.Button("Synthesize Audio", variant="primary")
-            
-            audio_out = gr.Audio(label="Generated Audio")
-            inference_status = gr.Textbox(label="Inference Status", lines=1)
             
     # ------ Handlers ------
     prep_btn.click(fn=run_data_prep, inputs=[input_dir, ref_audio, speaker_name_input, asr_model, asr_source, gpu_asr], outputs=[prep_out, dataset_dropdown])
@@ -317,7 +347,7 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning") as app:
     
     train_btn.click(fn=start_training, inputs=[dataset_dropdown, init_model, model_source, t_batch, t_lr, t_epochs, t_grad, gpu_train], outputs=[train_status])
     stop_btn.click(fn=stop_training, outputs=[train_status])
-    refresh_log_btn.click(fn=read_logs, outputs=[log_box])
+    refresh_log_btn.click(fn=read_logs, outputs=[parsed_status, log_box])
     
     ckpt_refresh_btn.click(fn=refresh_checkpoints, outputs=[ckpt_dropdown])
     ckpt_dropdown.change(fn=on_checkpoint_change, inputs=[ckpt_dropdown], outputs=[test_speaker])
@@ -325,4 +355,5 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning") as app:
     test_btn.click(fn=run_inference, inputs=[ckpt_dropdown, test_speaker, test_text, gpu_infer], outputs=[audio_out, inference_status])
 
 if __name__ == "__main__":
+    os.environ["NO_PROXY"] = "localhost,127.0.0.1,0.0.0.0,::1"
     app.launch(server_name="0.0.0.0", server_port=7860, share=False)
