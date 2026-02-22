@@ -4,6 +4,14 @@ This repository provides an easy-to-use workspace for fine-tuning the Qwen3-TTS 
 
 ---
 
+### Read my article
+
+You can read my article for a detailed illustrated tutorial.
+
+[English](https://mozi1924.com/article/qwen3-tts-finetuning-en/)
+
+[中文](https://mozi1924.com/article/qwen3-tts-finetuning-zh/)
+
 ### 🎙️ Why Fine-tuning instead of Zero-shot? / 为什么要进行微调？
 
 While zero-shot voice cloning is convenient, fine-tuning (SFT) offers significant advantages for production-quality results:
