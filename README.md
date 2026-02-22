@@ -34,10 +34,17 @@ docker compose up -d
 
 # 如果需要强制本地构建 (To force a local build)
 docker compose up -d --build
+```
 
-# 或者手动构建与运行 (Or manual build and run)
-docker build -t qwen3-tts-finetuner .
-docker run --gpus all -it -v $(pwd):/workspace qwen3-tts-finetuner
+**Pushing to GHCR (Manual/Local Build)**
+由于预构建镜像较大（包含 CUDA 12.4 和 PyTorch），GitHub Actions 的免费版容器空间可能不足。建议在本地构建并推送：
+```bash
+# 首先登录 GHCR (Login first)
+# 使用你的 GitHub PAT (Personal Access Token)
+echo $YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+
+# 使用脚本构建并推送 (Build and push via script)
+./push_image.sh latest  # 或者指定 tag，如 ./push_image.sh v1.0
 ```
 
 **Using Python Virtual Environment**
