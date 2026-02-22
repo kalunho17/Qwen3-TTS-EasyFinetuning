@@ -297,7 +297,7 @@ def stop_tensorboard():
         return f"Error stopping Tensorboard: {e}"
 
 # ----------------- Training -----------------
-def start_training(experiment_name, speaker_name, init_model, model_source, batch_size, lr, epochs, grad_acc, gpu_id, progress=gr.Progress()):
+def start_training(experiment_name, speaker_name, init_model, model_source, batch_size, lr, epochs, grad_acc, gpu_id, use_experimental_speedup, progress=gr.Progress()):
     global global_training_stop_event
     
     unload_model() # Force unload model before training memory clears
@@ -323,7 +323,8 @@ def start_training(experiment_name, speaker_name, init_model, model_source, batc
         "batch_size": batch_size,
         "lr": lr,
         "epochs": epochs,
-        "grad_acc": grad_acc
+        "grad_acc": grad_acc,
+        "use_experimental_speedup": use_experimental_speedup
     }
     with open(config_path, "w") as f:
         json.dump(config_data, f, indent=4)
@@ -350,27 +351,47 @@ def start_training(experiment_name, speaker_name, init_model, model_source, batc
         lr=lr,
         num_epochs=epochs,
         gradient_accumulation_steps=grad_acc,
-        resume_from_checkpoint="latest"
+        resume_from_checkpoint="latest",
+        use_experimental_speedup=use_experimental_speedup
     )
 
     try:
+        total_epochs = epochs or 1
         for item in gen:
             if isinstance(item, dict):
                 msg_type = item.get("type", "")
                 if msg_type == "progress":
                     progress(item.get("progress", 0), desc=item.get("desc", ""))
                     last_status = f"Running: {item.get('desc', '')}"
+                    yield last_status, "\n".join(log_history[-30:])
                 elif msg_type == "train_progress":
                     epoch = item.get("epoch", 0)
                     step = item.get("step", 0)
                     loss = item.get("loss", 0.0)
+                    
+                    # Calculate smooth progress percentage
+                    # Base progress from completed epochs
+                    epoch_progress = (epoch) / total_epochs
+                    # Add a tiny bit of step progress (assuming ~1000 steps per epoch as a guess, scaled to 1/total_epochs)
+                    # This ensures the bar moves at least slightly every step update
                     if isinstance(step, int):
+                        step_progress = min(0.9, step / 1000.0) * (1.0 / total_epochs)
+                        current_progress = epoch_progress + step_progress
                         desc_str = f"Epoch {epoch} | Step {step} | Loss: {loss:.4f}"
                     else:
+                        current_progress = epoch_progress
                         desc_str = f"Epoch {epoch} | {step}"
-                    progress(0.5, desc=desc_str)
-                    last_status = desc_str
+                    
+                    # Update progress bar only
+                    progress(current_progress, desc=desc_str)
+                    
+                    # Log the history
                     log_history.append(desc_str)
+                    
+                    # ONLY yield the log box update to prevent train_status flicker
+                    # Using gr.update() for train_status tells Gradio not to change/refresh its content
+                    yield gr.update(), "\n".join(log_history[-30:])
+                    
                 elif msg_type == "done":
                     progress(1.0, desc="Done")
                     last_status = f"Success: {item.get('msg', 'Completed')}"
@@ -386,7 +407,7 @@ def start_training(experiment_name, speaker_name, init_model, model_source, batc
             elif isinstance(item, str):
                 log_history.append(item)
                 last_status = item
-            yield last_status, "\n".join(log_history[-30:])
+                yield last_status, "\n".join(log_history[-30:])
     except Exception as e:
         yield f"Error: Unhandled exception {str(e)}", "\n".join(log_history[-30:])
 
@@ -420,12 +441,13 @@ def load_experiment_config(experiment_name):
                 data.get("epochs", 2),
                 data.get("grad_acc", 4),
                 data.get("speaker_name", ""),
+                data.get("use_experimental_speedup", False),
                 f"Loaded configuration for experiment '{experiment_name}'"
             )
         except Exception as e:
-            return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), f"Failed to load config: {e}"
+            return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), f"Failed to load config: {e}"
             
-    return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), "New experiment / No config found."
+    return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), "New experiment / No config found."
 
 # ----------------- Inference -----------------
 def load_model(model_path, gpu_id):
@@ -591,6 +613,14 @@ label span, .gr-markdown h3 {
     border-radius: 4px !important;
 }
 
+/* Hide progress bar on specific containers */
+.no-progress .progress-view, .no-progress .gr-progress-view {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
 /* Tab styling */
 .gr-tabs {
     border: none !important;
@@ -727,6 +757,9 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning", css=css) as app:
                         t_epochs = gr.Slider(minimum=1, maximum=100, step=1, value=2, label="Epochs")
                         t_batch = gr.Slider(minimum=1, maximum=16, step=1, value=2, label="Batch Size")
                         t_grad = gr.Slider(minimum=1, maximum=16, step=1, value=4, label="Gradient Accumulation")
+                    
+                    with gr.Row():
+                        t_speedup = gr.Checkbox(label="Use Experimental Training Method to Speed Up (Multi-core CPU)", value=False)
                         
                 with gr.Row():
                     train_btn = gr.Button("🚀 Start Training", variant="primary", elem_classes="gr-button-primary")
@@ -738,7 +771,7 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning", css=css) as app:
                         with gr.Row():
                             tb_link_btn = gr.Button("📊 Jump to Tensorboard", variant="secondary")
                             tb_stop_btn = gr.Button("⏹️ Stop Tensorboard", variant="secondary")
-                    with gr.Column(scale=7):
+                    with gr.Column(scale=7, elem_classes="no-progress"):
                         log_box = gr.Textbox(label="Live Training Logs (Streams automatically)", lines=10)
             
         with gr.Tab("3. Inference / Testing"):
@@ -775,7 +808,7 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning", css=css) as app:
     experiment_dropdown.change(
         fn=load_experiment_config, 
         inputs=[experiment_dropdown], 
-        outputs=[preset_dropdown, init_model, t_batch, t_lr, t_epochs, t_grad, speaker_dropdown, train_status]
+        outputs=[preset_dropdown, init_model, t_batch, t_lr, t_epochs, t_grad, speaker_dropdown, t_speedup, train_status]
     )
     
     # Step 1
@@ -800,7 +833,7 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning", css=css) as app:
     # Training
     train_btn.click(
         fn=start_training, 
-        inputs=[experiment_dropdown, speaker_dropdown, init_model, model_source, t_batch, t_lr, t_epochs, t_grad, gpu_train], 
+        inputs=[experiment_dropdown, speaker_dropdown, init_model, model_source, t_batch, t_lr, t_epochs, t_grad, gpu_train, t_speedup], 
         outputs=[train_status, log_box]
     )
     stop_btn.click(fn=stop_training, outputs=[train_status])

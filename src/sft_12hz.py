@@ -75,7 +75,8 @@ def run_train(
     num_epochs=2,
     gradient_accumulation_steps=4,
     resume_from_checkpoint="latest",
-    stop_event=None
+    stop_event=None,
+    use_experimental_speedup=False
 ):
     global target_speaker_embedding
     try:
@@ -89,6 +90,7 @@ def run_train(
             num_epochs=num_epochs,
             gradient_accumulation_steps=gradient_accumulation_steps,
             resume_from_checkpoint=resume_from_checkpoint,
+            use_experimental_speedup=use_experimental_speedup,
         )
         
         # Use project root logs directory
@@ -116,7 +118,24 @@ def run_train(
         train_data = open(args.train_jsonl).readlines()
         train_data = [json.loads(line) for line in train_data]
         dataset = TTSDataset(train_data, qwen3tts.processor, config)
-        train_dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=dataset.collate_fn)
+        
+        if getattr(args, 'use_experimental_speedup', False):
+            train_dataloader = DataLoader(
+                dataset, 
+                batch_size=args.batch_size, 
+                shuffle=True, 
+                collate_fn=dataset.collate_fn,
+                num_workers=4,
+                pin_memory=True,
+                prefetch_factor=2
+            )
+        else:
+            train_dataloader = DataLoader(
+                dataset, 
+                batch_size=args.batch_size, 
+                shuffle=True, 
+                collate_fn=dataset.collate_fn
+            )
 
         optimizer = AdamW(qwen3tts.model.parameters(), lr=args.lr, weight_decay=0.01)
         

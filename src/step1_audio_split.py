@@ -4,6 +4,8 @@ import json
 import glob
 from pydub import AudioSegment, silence
 from tqdm import tqdm
+import concurrent.futures
+import multiprocessing
 
 def log_progress(progress, desc):
     print(json.dumps({"type": "progress", "progress": progress, "desc": desc}), flush=True)
@@ -90,18 +92,39 @@ def run_step_1(input_dir, output_dir, ref_audio=None):
             return
             
         all_segments = []
-        yield {"type": "progress", "progress": 0.1, "desc": "Splitting audio files..."}
+        num_workers = max(1, multiprocessing.cpu_count() - 1)
+        yield {"type": "progress", "progress": 0.1, "desc": f"Splitting {len(wav_files)} files using {num_workers} cores..."}
         
-        for idx, wav_path in enumerate(wav_files):
-            yield {"type": "progress", "progress": 0.1 + 0.5 * (idx / len(wav_files)), "desc": f"Splitting {idx+1}/{len(wav_files)}"}
-            prefix = os.path.splitext(os.path.basename(wav_path))[0]
-            segs = split_audio(wav_path, output_dir, prefix)
-            all_segments.extend([os.path.abspath(s) for s in segs])
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+            futures = {
+                executor.submit(split_audio, wav_path, output_dir, os.path.splitext(os.path.basename(wav_path))[0]): wav_path
+                for wav_path in wav_files
+            }
             
+            for idx, future in enumerate(concurrent.futures.as_completed(futures)):
+                yield {"type": "progress", "progress": 0.1 + 0.4 * (idx / max(1, len(wav_files))), "desc": f"Splitting {idx+1}/{len(wav_files)}"}
+                try:
+                    segs = future.result()
+                    all_segments.extend([os.path.abspath(s) for s in segs])
+                except Exception as e:
+                    yield {"type": "error", "msg": f"Error in parallel split: {str(e)}"}
+            
+        yield {"type": "progress", "progress": 0.5, "desc": f"Resampling {len(all_segments)} segments using {num_workers} cores..."}
+        
         # Resample all segments to 24kHz in place
-        for idx, seg in enumerate(all_segments):
-            yield {"type": "progress", "progress": 0.6 + 0.3 * (idx / len(all_segments)), "desc": f"Resampling segment {idx+1}/{len(all_segments)}"}
-            resample_audio(seg, seg) # Overwrite with 24kHz
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+            futures = {
+                executor.submit(resample_audio, seg, seg): seg 
+                for seg in all_segments
+            }
+            
+            for idx, future in enumerate(concurrent.futures.as_completed(futures)):
+                if idx % max(1, len(all_segments) // 25) == 0 or idx == len(all_segments) - 1:
+                    yield {"type": "progress", "progress": 0.5 + 0.4 * (idx / max(1, len(all_segments))), "desc": f"Resampling {idx+1}/{len(all_segments)}"}
+                try:
+                    future.result()
+                except Exception as e:
+                    yield {"type": "error", "msg": f"Error in parallel resample: {str(e)}"}
             
         yield {"type": "done", "msg": f"Successfully split and resampled {len(all_segments)} segments."}
         
