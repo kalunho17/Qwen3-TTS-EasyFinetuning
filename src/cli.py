@@ -13,7 +13,9 @@ Usage:
 
 import os
 import sys
+import json
 import time
+import argparse
 from utils import get_model_path, get_project_root, resolve_path
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -111,17 +113,44 @@ def cmd_asr(args):
 
 
 def cmd_tokenize(args):
-    """Step 3: Data Tokenization."""
+    """Step 3: Data Tokenization (supports multi-speaker merge)."""
     print_step("Step 3: Data Tokenization")
     from prepare_data import run_prepare
     
-    speaker_dir = resolve_path(os.path.join("final-dataset", args.speaker_name))
-    input_jsonl = os.path.join(speaker_dir, "tts_train.jsonl")
+    # Parse comma-separated speaker names
+    speaker_names = [s.strip() for s in args.speaker_name.split(',') if s.strip()]
     
     # Save to logs/experiment_name/
     log_dir = resolve_path(os.path.join("logs", args.experiment_name))
     os.makedirs(log_dir, exist_ok=True)
     output_codes_jsonl = os.path.join(log_dir, "tts_train_with_codes.jsonl")
+    
+    if len(speaker_names) > 1:
+        # Multi-speaker: merge all speaker jsonls into one with speaker_id field
+        merged_jsonl = os.path.join(log_dir, "tts_train_merged.jsonl")
+        total_merged = 0
+        with open(merged_jsonl, 'w', encoding='utf-8') as f_out:
+            for spk_name in speaker_names:
+                speaker_dir = resolve_path(os.path.join("final-dataset", spk_name))
+                input_jsonl = os.path.join(speaker_dir, "tts_train.jsonl")
+                if not os.path.exists(input_jsonl):
+                    print(f"  ❌ File {input_jsonl} not found for speaker '{spk_name}'.")
+                    print("  Please run `split` and `asr` for each speaker first.")
+                    sys.exit(1)
+                with open(input_jsonl, 'r', encoding='utf-8') as f_in:
+                    for line in f_in:
+                        entry = json.loads(line.strip())
+                        entry['speaker_id'] = spk_name
+                        f_out.write(json.dumps(entry, ensure_ascii=False) + '\n')
+                        total_merged += 1
+        print(f"    Merged {total_merged} entries from {len(speaker_names)} speakers.")
+        input_jsonl = merged_jsonl
+    else:
+        speaker_dir = resolve_path(os.path.join("final-dataset", speaker_names[0]))
+        input_jsonl = os.path.join(speaker_dir, "tts_train.jsonl")
+        if not os.path.exists(input_jsonl):
+            print(f"  ❌ File {input_jsonl} not found.")
+            sys.exit(1)
     
     resolved_tokenizer = get_model_path("Qwen/Qwen3-TTS-Tokenizer-12Hz", use_hf=False)
     device = "cuda:0" if args.gpu != "cpu" else "cpu"
@@ -130,12 +159,19 @@ def cmd_tokenize(args):
 
 
 def cmd_train(args):
-    """Run fine-tuning training."""
+    """Run fine-tuning training (supports multi-speaker)."""
     import subprocess
 
     print_header("🏋️ Qwen3-TTS Fine-tuning")
+    
+    # Parse speaker names
+    speaker_names = [s.strip() for s in args.speaker_name.split(',') if s.strip()]
+    
     print(f"  Experiment   : {args.experiment_name}")
-    print(f"  Speaker      : {args.speaker_name}")
+    if len(speaker_names) > 1:
+        print(f"  Speakers     : {', '.join(speaker_names)} (multi-speaker)")
+    else:
+        print(f"  Speaker      : {args.speaker_name}")
     print(f"  Base Model   : {args.init_model}")
     print(f"  GPU Device   : {args.gpu}")
     print(f"  Batch Size   : {args.batch_size}")
@@ -146,7 +182,7 @@ def cmd_train(args):
     train_jsonl = resolve_path(os.path.join("logs", args.experiment_name, "tts_train_with_codes.jsonl"))
     if not os.path.exists(train_jsonl):
         print(f"\n  ❌ Training data not found: {train_jsonl}")
-        print("  Please run `python cli.py prepare` first.")
+        print("  Please run `python cli.py prepare` or `python cli.py tokenize` first.")
         sys.exit(1)
 
     output_dir = resolve_path(os.path.join("output", args.experiment_name))
@@ -311,8 +347,18 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python cli.py prepare --input_dir /workspace/raw-dataset --speaker_name my_speaker
+  # Single speaker
+  python cli.py prepare --input_dir /workspace/raw-dataset --speaker_name my_speaker --experiment_name exp1
   python cli.py train   --experiment_name exp1 --speaker_name my_speaker
+
+  # Multi-speaker
+  python cli.py split     --input_dir /data/speaker_a --speaker_name speaker_a
+  python cli.py asr       --speaker_name speaker_a
+  python cli.py split     --input_dir /data/speaker_b --speaker_name speaker_b
+  python cli.py asr       --speaker_name speaker_b
+  python cli.py tokenize  --speaker_name speaker_a,speaker_b --experiment_name multi_exp
+  python cli.py train     --experiment_name multi_exp --speaker_name speaker_a,speaker_b
+
   python cli.py infer   --checkpoint output/exp1/checkpoint-epoch-1 --text "Hello world"
         """,
     )
@@ -345,14 +391,14 @@ Examples:
 
     # ── tokenize (Step 3) ──
     p_tokenize = subparsers.add_parser("tokenize", help="Step 3: Data Tokenization")
-    p_tokenize.add_argument("--speaker_name", type=str, required=True)
+    p_tokenize.add_argument("--speaker_name", type=str, required=True, help="Speaker name(s), comma-separated for multi-speaker")
     p_tokenize.add_argument("--experiment_name", type=str, required=True, help="Experiment name for saving logs/codes")
     p_tokenize.add_argument("--gpu", type=str, default="cuda:0")
 
     # ── train ──
-    p_train = subparsers.add_parser("train", help="Run fine-tuning training")
+    p_train = subparsers.add_parser("train", help="Run fine-tuning training (supports multi-speaker)")
     p_train.add_argument("--experiment_name", type=str, required=True, help="Name for this experiment")
-    p_train.add_argument("--speaker_name", type=str, required=True, help="Speaker name (must match prepared data)")
+    p_train.add_argument("--speaker_name", type=str, required=True, help="Speaker name(s), comma-separated for multi-speaker")
     p_train.add_argument("--init_model", type=str, default="Qwen/Qwen3-TTS-12Hz-0.6B-Base", help="Base model ID")
     p_train.add_argument("--model_source", type=str, choices=["ModelScope", "HuggingFace"], default="HuggingFace", help="Model download source")
     p_train.add_argument("--batch_size", type=int, default=2, help="Training batch size")

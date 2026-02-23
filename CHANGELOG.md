@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-02-23
+
+### Added
+- **Multi-Speaker Fine-tuning**: Train a single model with multiple speakers simultaneously. Each speaker gets a unique `spk_id` index and independent speaker embedding.
+  - WebUI: Select multiple speakers from the dropdown in Training tab.
+  - CLI: Use comma-separated `--speaker_name speaker_a,speaker_b` for `tokenize` and `train` commands.
+- **Per-Sample Speaker Encoding**: Speaker embeddings are computed individually per sample to avoid padding artifacts from variable-length reference audio.
+- **Automatic JSONL Merge**: Step 3 (Tokenization) automatically merges per-speaker `tts_train.jsonl` files with `speaker_id` field when multiple speakers are selected.
+
+### Changed
+- `dataset.py`: Added `speaker_id` field to dataset items and batch dict, `ref_mels` returned as list for variable-length support.
+- `sft_12hz.py`: Replaced single `target_speaker_embedding` with per-speaker `speaker_embeddings` dict. Checkpoint saves all speaker embeddings at unique codec indices.
+- `data_pipeline.py`: Added optional `speaker_id` to JSONL output.
+- `cli.py`: Added `json` and `argparse` imports, multi-speaker support for `tokenize` and `train` subcommands.
+
 ## [1.0.0] - 2025-02-23
 
 ### Added

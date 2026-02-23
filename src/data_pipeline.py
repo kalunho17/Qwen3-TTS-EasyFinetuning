@@ -70,7 +70,7 @@ def split_audio(audio_path, output_dir_base, filename_prefix, max_duration_ms=15
             
     return segment_paths
 
-def run_pipeline(input_dir, ref_audio, output_dir, model_id="Qwen/Qwen3-ASR-1.7B", batch_size=16, progress=None):
+def run_pipeline(input_dir, ref_audio, output_dir, model_id="Qwen/Qwen3-ASR-1.7B", batch_size=16, progress=None, speaker_id=None):
     audio_out_dir = os.path.join(output_dir, "audio")
     audio_24k_dir = os.path.join(output_dir, "audio_24k")
     os.makedirs(audio_out_dir, exist_ok=True)
@@ -130,7 +130,8 @@ def run_pipeline(input_dir, ref_audio, output_dir, model_id="Qwen/Qwen3-ASR-1.7B
                 final_entries.append({
                     "audio": os.path.abspath(dest_audio),
                     "text": cleaned_text,
-                    "ref_audio": os.path.abspath(ref_24k_path) if ref_audio else ""
+                    "ref_audio": os.path.abspath(ref_24k_path) if ref_audio else "",
+                    **({"speaker_id": speaker_id} if speaker_id else {})
                 })
         except Exception as e:
             print(f"Error transcribing batch {i}: {e}")

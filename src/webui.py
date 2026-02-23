@@ -63,6 +63,32 @@ def get_datasets():
     if not os.path.exists(dataset_path): return []
     return [d for d in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, d))]
 
+def get_raw_datasets():
+    base = "raw-dataset"
+    if not os.path.exists(base): 
+        os.makedirs(base, exist_ok=True)
+    dirs = [os.path.join(base, d) for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))]
+    return sorted([base] + dirs)
+
+def get_ref_audios():
+    base = "raw-dataset"
+    if not os.path.exists(base): return ["raw-dataset/ref.wav"]
+    
+    paths = ["raw-dataset/ref.wav"] # Always show default as an option
+    
+    # Check first-level subdirectories for ref.wav
+    for d in os.listdir(base):
+        dir_path = os.path.join(base, d)
+        if os.path.isdir(dir_path):
+            ref_sub = os.path.join(dir_path, "ref.wav")
+            # We don't necessarily need to check if exists, 
+            # as the user might want to select/type it then put the file.
+            # But the user said "命名为ref.wav放进去", so showing existing ones is better.
+            if os.path.exists(ref_sub):
+                paths.append(ref_sub)
+                
+    return sorted(list(set(paths)))
+
 def get_checkpoints(experiment_name=None, include_specials=True):
     output_path = resolve_path("output")
     ckpts = []
@@ -211,21 +237,49 @@ def run_step_2(speaker_name, asr_model, asr_source, gpu_id, progress=gr.Progress
 
 # ----------------- Step 3: Tokenization -----------------
 def run_step_3(speaker_name, experiment_name, gpu_id, progress=gr.Progress()):
-    if not speaker_name.strip() or not experiment_name.strip(): 
+    # speaker_name can be a list (multiselect dropdown) or a string
+    if isinstance(speaker_name, list):
+        speaker_names = [s.strip() for s in speaker_name if s.strip()]
+    elif isinstance(speaker_name, str):
+        speaker_names = [s.strip() for s in speaker_name.split(',') if s.strip()]
+    else:
+        speaker_names = []
+    
+    if not speaker_names or not experiment_name.strip(): 
         yield "Please specify Speaker Name and Experiment Name."
         return
- 
-    speaker_dir = resolve_path(os.path.join("final-dataset", speaker_name.strip()))
-    input_jsonl = os.path.join(speaker_dir, "tts_train.jsonl")
     
     # Save to logs/experiment_name/
     log_dir = resolve_path(os.path.join("logs", experiment_name.strip()))
     os.makedirs(log_dir, exist_ok=True)
     output_jsonl = os.path.join(log_dir, "tts_train_with_codes.jsonl")
     
-    if not os.path.exists(input_jsonl):
-        yield f"Error: File {input_jsonl} not found. Please run Data Prep Step 1 & 2 first."
-        return
+    if len(speaker_names) > 1:
+        # Multi-speaker: merge all speaker jsonls into one with speaker_id field
+        merged_jsonl = os.path.join(log_dir, "tts_train_merged.jsonl")
+        total_merged = 0
+        with open(merged_jsonl, 'w', encoding='utf-8') as f_out:
+            for spk_name in speaker_names:
+                speaker_dir = resolve_path(os.path.join("final-dataset", spk_name))
+                input_jsonl = os.path.join(speaker_dir, "tts_train.jsonl")
+                if not os.path.exists(input_jsonl):
+                    yield f"Error: File {input_jsonl} not found for speaker '{spk_name}'. Please run Data Prep Step 1 & 2 first."
+                    return
+                with open(input_jsonl, 'r', encoding='utf-8') as f_in:
+                    for line in f_in:
+                        entry = json.loads(line.strip())
+                        entry['speaker_id'] = spk_name
+                        f_out.write(json.dumps(entry, ensure_ascii=False) + '\n')
+                        total_merged += 1
+        yield f"Merged {total_merged} entries from {len(speaker_names)} speakers. Starting tokenization..."
+        input_jsonl = merged_jsonl
+    else:
+        # Single speaker
+        speaker_dir = resolve_path(os.path.join("final-dataset", speaker_names[0]))
+        input_jsonl = os.path.join(speaker_dir, "tts_train.jsonl")
+        if not os.path.exists(input_jsonl):
+            yield f"Error: File {input_jsonl} not found. Please run Data Prep Step 1 & 2 first."
+            return
         
     resolved_tokenizer = get_model_path("Qwen/Qwen3-TTS-Tokenizer-12Hz", use_hf=False)
     device = "cuda:0" if gpu_id != "cpu" else "cpu"
@@ -285,8 +339,14 @@ def start_training(experiment_name, speaker_name, init_model, model_source, batc
     global global_training_stop_event
     
     unload_model() # Force unload model before training memory clears
+    
+    # Normalize speaker_name: list (multiselect) or string
+    if isinstance(speaker_name, list):
+        speaker_name_str = ','.join(s.strip() for s in speaker_name if s.strip())
+    else:
+        speaker_name_str = speaker_name.strip() if speaker_name else ''
         
-    if not experiment_name or not speaker_name:
+    if not experiment_name or not speaker_name_str:
         yield "Error: Please select or type an Experiment Name / Speaker Name.", ""
         return
     
@@ -301,7 +361,7 @@ def start_training(experiment_name, speaker_name, init_model, model_source, batc
     # Auto-save Configuration
     config_path = os.path.join(output_dir, "training_config.json")
     config_data = {
-        "speaker_name": speaker_name,
+        "speaker_name": speaker_name_str,
         "init_model": init_model,
         "model_source": model_source,
         "batch_size": batch_size,
@@ -339,7 +399,7 @@ def start_training(experiment_name, speaker_name, init_model, model_source, batc
         init_model_path=resolved_init_model,
         output_model_path=output_dir,
         train_jsonl=train_jsonl,
-        speaker_name=speaker_name,
+        speaker_name=speaker_name_str,
         batch_size=batch_size,
         lr=float(lr) if isinstance(lr, str) else lr,
         num_epochs=epochs,
@@ -437,7 +497,7 @@ def load_experiment_config(experiment_name):
                 data.get("lr", 1e-7),
                 data.get("epochs", 2),
                 data.get("grad_acc", 4),
-                data.get("speaker_name", ""),
+                data.get("speaker_name", "").split(',') if data.get("speaker_name") else [],
                 data.get("use_experimental_speedup", False),
                 data.get("resume_from_checkpoint", "latest"),
                 f"Loaded configuration for experiment '{experiment_name}'",
@@ -471,7 +531,7 @@ def on_new_experiment(name):
             "1e-7", # lr
             2, # epochs
             4, # grad
-            "", # speaker
+            [], # speaker (multiselect list)
             False, # speedup
             "latest", # t_resume
             f"Successfully created new experiment: {name}", # status
@@ -706,20 +766,26 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning", css=css) as app:
                         info="Required: Unique name for storage",
                         scale=1
                     )
-                    input_dir = gr.Textbox(
+                    input_dir = gr.Dropdown(
                         label="Raw WAVs Directory", 
+                        choices=get_raw_datasets(),
                         value="raw-dataset",
+                        allow_custom_value=True,
                         info="Folder containing source .wav files",
                         scale=1
                     )
-                    ref_audio = gr.Textbox(
+                    ref_audio = gr.Dropdown(
                         label="Reference Audio Path", 
+                        choices=get_ref_audios(),
                         value="raw-dataset/ref.wav", 
+                        allow_custom_value=True,
                         info="Optional: Resampled to 24k",
                         scale=1
                     )
                 
-                step1_btn = gr.Button("▶️ Run Step 1: Audio Split & Ref Process", variant="primary")
+                with gr.Row():
+                    step1_btn = gr.Button("▶️ Run Step 1: Audio Split & Ref Process", variant="primary", scale=4)
+                    step1_refresh_btn = gr.Button("🔄 Refresh Paths", scale=1)
                 step1_out = gr.Textbox(label="Step 1 Output", lines=1)
 
             gr.Markdown("<br>")
@@ -765,7 +831,7 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning", css=css) as app:
                             exp_refresh_btn = gr.Button("🔄 Refresh", size="sm")
                             exp_new_btn = gr.Button("➕ New", size="sm", variant="secondary")
                     with gr.Column(scale=2):
-                        speaker_dropdown = gr.Dropdown(get_datasets(), label="Select Target Speaker Data", allow_custom_value=True, info="Source dataset for fine-tuning")
+                        speaker_dropdown = gr.Dropdown(get_datasets(), label="Select Target Speaker Data", allow_custom_value=True, multiselect=True, info="Select one or more speakers for multi-speaker training")
                         spk_refresh_btn = gr.Button("🔄 Refresh Speakers", size="sm")
                 
                 with gr.Row():
@@ -880,6 +946,27 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning", css=css) as app:
     # Update training click handler
     train_btn.click(fn=start_training, inputs=train_btn_inputs, outputs=[train_status, log_box])
     
+    # Step 1
+    def refresh_step1_paths():
+        return gr.update(choices=get_raw_datasets()), gr.update(choices=get_ref_audios())
+    
+    step1_refresh_btn.click(fn=refresh_step1_paths, outputs=[input_dir, ref_audio])
+
+    def on_input_dir_change(dir_path):
+        if not dir_path:
+            return "raw-dataset/ref.wav"
+        # If dir_path is 'raw-dataset/my_speaker', returns 'raw-dataset/my_speaker/ref.wav'
+        # If dir_path is 'raw-dataset', returns 'raw-dataset/ref.wav'
+        return os.path.join(dir_path, "ref.wav")
+
+    input_dir.change(fn=on_input_dir_change, inputs=[input_dir], outputs=[ref_audio])
+
+    step1_btn.click(
+        fn=run_step_1, 
+        inputs=[input_dir, global_speaker_input, ref_audio], 
+        outputs=[step1_out]
+    )
+
     # Step 2
     step2_btn.click(fn=run_step_2, inputs=[global_speaker_input, asr_model, asr_source, gpu_asr], outputs=[step2_out])
 

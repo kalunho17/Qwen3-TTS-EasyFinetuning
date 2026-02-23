@@ -32,6 +32,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoConfig
 
 target_speaker_embedding = None
+speaker_embeddings = {}  # Dict[speaker_id_str, Tensor] for multi-speaker
 
 # Setup args manually for dataset processing
 class DummyArgs:
@@ -78,7 +79,8 @@ def run_train(
     stop_event=None,
     use_experimental_speedup=False
 ):
-    global target_speaker_embedding
+    global target_speaker_embedding, speaker_embeddings
+    speaker_embeddings = {}  # Reset for each training run
     try:
         args = DummyArgs(
             init_model_path=init_model_path,
@@ -115,9 +117,32 @@ def run_train(
         )
         config = AutoConfig.from_pretrained(MODEL_PATH)
 
+        # Parse speaker_names: support comma-separated string or list
+        if isinstance(args.speaker_name, str):
+            speaker_names = [s.strip() for s in args.speaker_name.split(',') if s.strip()]
+        elif isinstance(args.speaker_name, list):
+            speaker_names = args.speaker_name
+        else:
+            speaker_names = [str(args.speaker_name)]
+        
+        if not speaker_names:
+            speaker_names = ["speaker_test"]
+        
+        # Build spk_id_map: assign unique indices starting at 3000
+        spk_id_map = {}
+        for idx, name in enumerate(speaker_names):
+            spk_id_map[name] = 3000 + idx
+        
+        accelerator.print(f"Multi-speaker mode: {len(speaker_names)} speakers")
+        for name, sid in spk_id_map.items():
+            accelerator.print(f"  Speaker '{name}' -> spk_id {sid}")
+
         train_data = open(args.train_jsonl).readlines()
         train_data = [json.loads(line) for line in train_data]
-        dataset = TTSDataset(train_data, qwen3tts.processor, config)
+        
+        # Use first speaker as default for backward compatibility
+        default_speaker = speaker_names[0]
+        dataset = TTSDataset(train_data, qwen3tts.processor, config, default_speaker=default_speaker)
         
         if getattr(args, 'use_experimental_speedup', False):
             train_dataloader = DataLoader(
@@ -207,7 +232,7 @@ def run_train(
                 with accelerator.accumulate(model):
                     input_ids = batch['input_ids'].to(model.device)
                     codec_ids = batch['codec_ids'].to(model.device)
-                    ref_mels = batch['ref_mels'].to(model.device)
+                    ref_mels_list = batch['ref_mels']  # list of (1, time, 128) tensors
                     text_embedding_mask = batch['text_embedding_mask'].to(model.device)
                     codec_embedding_mask = batch['codec_embedding_mask'].to(model.device)
                     attention_mask = batch['attention_mask'].to(model.device)
@@ -216,7 +241,22 @@ def run_train(
 
                     with accelerator.autocast():
                         unwrap_model = accelerator.unwrap_model(model)
-                        speaker_embedding = unwrap_model.speaker_encoder(ref_mels.to(unwrap_model.dtype)).detach()
+                        
+                        # Compute speaker embeddings per-sample to avoid padding artifacts
+                        per_sample_embeddings = []
+                        batch_speaker_ids = batch['speaker_ids']
+                        for b_idx, ref_mel in enumerate(ref_mels_list):
+                            emb = unwrap_model.speaker_encoder(ref_mel.to(model.device).to(unwrap_model.dtype)).detach()
+                            per_sample_embeddings.append(emb)  # (1, dim)
+                            
+                            sid = batch_speaker_ids[b_idx]
+                            if sid not in speaker_embeddings:
+                                speaker_embeddings[sid] = emb[0].cpu()
+                                accelerator.print(f"Captured embedding for speaker '{sid}'")
+                        
+                        speaker_embedding = torch.cat(per_sample_embeddings, dim=0)  # (batch, dim)
+                        
+                        # Backward compatibility: also set target_speaker_embedding
                         if target_speaker_embedding is None:
                             target_speaker_embedding = speaker_embedding.cpu()
 
@@ -276,8 +316,8 @@ def run_train(
                 if step % 500 == 0:
                     if accelerator.is_main_process:
                         try:
-                            # ref_mels is (batch, time, 128)
-                            mel_vis = plot_spectrogram_to_numpy(ref_mels[0].detach().cpu().float().numpy())
+                            # ref_mels_list is a list of (1, time, 128) tensors
+                            mel_vis = plot_spectrogram_to_numpy(ref_mels_list[0][0].detach().cpu().float().numpy())
                             tb_tracker = accelerator.get_tracker("tensorboard")
                             tb_tracker.tracker.add_image("ref_mel", mel_vis, global_step, dataformats='HWC')
                         except Exception as e:
@@ -305,12 +345,11 @@ def run_train(
                     config_dict = json.load(f)
                 config_dict["tts_model_type"] = "custom_voice"
                 talker_config = config_dict.get("talker_config", {})
-                talker_config["spk_id"] = {
-                    args.speaker_name: 3000
-                }
-                talker_config["spk_is_dialect"] = {
-                    args.speaker_name: False
-                }
+                
+                # Write all speaker IDs to config
+                talker_config["spk_id"] = spk_id_map
+                talker_config["spk_is_dialect"] = {name: False for name in spk_id_map}
+                
                 config_dict["talker_config"] = talker_config
 
                 with open(output_config_file, 'w', encoding='utf-8') as f:
@@ -324,12 +363,25 @@ def run_train(
                 for k in keys_to_drop:
                     del state_dict[k]
 
-                # Ensure target_speaker_embedding is available before using it
-                if target_speaker_embedding is None:
-                    accelerator.print("Warning: target_speaker_embedding was not set during training steps.")
+                # Ensure speaker embeddings are available
+                if not speaker_embeddings and target_speaker_embedding is None:
+                    accelerator.print("Warning: no speaker embeddings were captured during training steps.")
 
                 weight = state_dict['talker.model.codec_embedding.weight']
-                state_dict['talker.model.codec_embedding.weight'][3000] = target_speaker_embedding[0].detach().to(weight.device).to(weight.dtype)
+                
+                # Write all speaker embeddings to their respective indices
+                if speaker_embeddings:
+                    for spk_name, spk_idx in spk_id_map.items():
+                        if spk_name in speaker_embeddings:
+                            emb = speaker_embeddings[spk_name]
+                            state_dict['talker.model.codec_embedding.weight'][spk_idx] = emb.detach().to(weight.device).to(weight.dtype)
+                            accelerator.print(f"Saved embedding for speaker '{spk_name}' at index {spk_idx}")
+                        else:
+                            accelerator.print(f"Warning: no embedding captured for speaker '{spk_name}'")
+                elif target_speaker_embedding is not None:
+                    # Fallback: single speaker mode
+                    state_dict['talker.model.codec_embedding.weight'][3000] = target_speaker_embedding[0].detach().to(weight.device).to(weight.dtype)
+                
                 save_path = os.path.join(output_dir, "model.safetensors")
                 save_file(state_dict, save_path)
                 
