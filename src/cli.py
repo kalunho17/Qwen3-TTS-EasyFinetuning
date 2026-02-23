@@ -372,7 +372,7 @@ Examples:
     p_prepare.add_argument("--ref_audio", type=str, default=None, help="Path to reference audio file (optional)")
     p_prepare.add_argument("--asr_model", type=str, default="Qwen/Qwen3-ASR-1.7B", help="ASR model ID")
     p_prepare.add_argument("--batch_size", type=int, default=16, help="ASR batch size")
-    p_prepare.add_argument("--model_source", type=str, choices=["ModelScope", "HuggingFace"], default="ModelScope", help="Model download source")
+    p_prepare.add_argument("--model_source", type=str, choices=["HuggingFace", "ModelScope"], default="HuggingFace", help="Model download source")
     p_prepare.add_argument("--gpu", type=str, default="cuda:0", help="GPU device (e.g., cuda:0, cpu)")
 
     # ── split (Step 1) ──
@@ -386,7 +386,7 @@ Examples:
     p_asr.add_argument("--speaker_name", type=str, required=True)
     p_asr.add_argument("--asr_model", type=str, default="Qwen/Qwen3-ASR-1.7B")
     p_asr.add_argument("--batch_size", type=int, default=16)
-    p_asr.add_argument("--model_source", type=str, choices=["ModelScope", "HuggingFace"], default="ModelScope")
+    p_asr.add_argument("--model_source", type=str, choices=["HuggingFace", "ModelScope"], default="HuggingFace")
     p_asr.add_argument("--gpu", type=str, default="cuda:0")
 
     # ── tokenize (Step 3) ──
@@ -400,7 +400,7 @@ Examples:
     p_train.add_argument("--experiment_name", type=str, required=True, help="Name for this experiment")
     p_train.add_argument("--speaker_name", type=str, required=True, help="Speaker name(s), comma-separated for multi-speaker")
     p_train.add_argument("--init_model", type=str, default="Qwen/Qwen3-TTS-12Hz-0.6B-Base", help="Base model ID")
-    p_train.add_argument("--model_source", type=str, choices=["ModelScope", "HuggingFace"], default="HuggingFace", help="Model download source")
+    p_train.add_argument("--model_source", type=str, choices=["HuggingFace", "ModelScope"], default="HuggingFace", help="Model download source")
     p_train.add_argument("--batch_size", type=int, default=2, help="Training batch size")
     p_train.add_argument("--lr", type=float, default=1e-7, help="Learning rate")
     p_train.add_argument("--epochs", type=int, default=2, help="Number of training epochs")

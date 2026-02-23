@@ -43,6 +43,9 @@
 # 默认从 GHCR 拉取预构建镜像
 docker compose up -d
 
+# 中国大陆用户可以带上参数使用阿里云镜像源，以获得极速下载体验：
+DOCKER_IMAGE=registry.cn-hangzhou.aliyuncs.com/mozi1924/qwen3-tts-easyfinetuning:latest docker compose up -d
+
 # 如果需要强制本地构建
 docker compose up -d --build
 ```
