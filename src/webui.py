@@ -15,6 +15,13 @@ import gc
 import sys
 from utils import get_model_path, get_project_root, resolve_path
 
+def get_build_info():
+    try:
+        with open("build_info.json", "r") as f:
+            return json.load(f)
+    except:
+        return None
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import time
@@ -752,6 +759,13 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning", css=css) as app:
     gr.Markdown("[GitHub Repo](https://github.com/mozi1924/Qwen3-TTS-EasyFinetuning) | **Author:** [Mozi Arasaka](https://github.com/mozi1924)")
     gr.Markdown("## ⚠️ Disclaimer")
     gr.Markdown("By using this tool to fine-tune models, you agree that you will not use it for any illegal purposes or to infringe upon the rights of others. The author is not responsible for any direct or indirect consequences arising from the use of this tool, including but not limited to hardware damage or legal disputes.")
+    
+    build_info = get_build_info()
+    if build_info:
+        gr.Markdown(f"**Image Build Time:** `{build_info.get('build_time')}` | **Git Hash:** `{build_info.get('git_hash')}`")
+    else:
+        # If running locally via python src/webui.py or volume mounted, build_info.json won't exist in the container root
+        gr.Markdown(f"**Running Mode:** `Local / Volume Mounted` (No image build metadata found)")
     
     gpus_list = get_gpus()
     default_gpu = gpus_list[0] if gpus_list else "cpu"
