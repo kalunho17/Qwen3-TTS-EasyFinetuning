@@ -748,6 +748,10 @@ label span, .gr-markdown h3 {
 
 with gr.Blocks(title="Qwen3-TTS Easy Finetuning", css=css) as app:
     gr.Markdown("# 🎙️ Qwen3-TTS Easy Finetuning WebUI")
+    gr.Markdown("![License](https://img.shields.io/github/license/mozi1924/Qwen3-TTS-EasyFinetuning?style=for-the-badge&color=blue)")
+    gr.Markdown("[GitHub Repo](https://github.com/mozi1924/Qwen3-TTS-EasyFinetuning) | **Author:** [Mozi Arasaka](https://github.com/mozi1924)")
+    gr.Markdown("## ⚠️ Disclaimer")
+    gr.Markdown("By using this tool to fine-tune models, you agree that you will not use it for any illegal purposes or to infringe upon the rights of others. The author is not responsible for any direct or indirect consequences arising from the use of this tool, including but not limited to hardware damage or legal disputes.")
     
     gpus_list = get_gpus()
     default_gpu = gpus_list[0] if gpus_list else "cpu"

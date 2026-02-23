@@ -107,6 +107,12 @@ python src/cli.py infer --checkpoint output/exp1/checkpoint-epoch-2 --speaker my
 
 ---
 
+## ⚠️ Disclaimer
+
+By using this tool to fine-tune models, you agree that you will not use it for any illegal purposes or to infringe upon the rights of others. The author is not responsible for any direct or indirect consequences arising from the use of this tool, including but not limited to hardware damage or legal disputes.
+
+---
+
 ## 🤝 Acknowledgments
 
 *   Built upon [Qwen3-TTS](https://github.com/qwenLM/Qwen3-tts) and [Qwen3-ASR](https://github.com/qwenLM/Qwen3-asr).
