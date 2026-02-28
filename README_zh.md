@@ -38,7 +38,7 @@
 
 ### 开发环境 (当前主机)
 用于本项目开发和测试的硬件环境：
-- **操作系统**: Ubuntu 24.04.1 LTS (内核 6.8.0-53-generic)
+- **操作系统**: Ubuntu 24.04.4 LTS (内核 6.17.0-14-generic)
 - **处理器 (CPU)**: 2 x Intel(R) Xeon(R) Platinum 8259CL (KVM 虚拟机, 32 核)
 - **内存 (RAM)**: 32 GB
 - **显卡 (GPU)**: 2 x NVIDIA GeForce RTX 3080 (10 GB 显存)

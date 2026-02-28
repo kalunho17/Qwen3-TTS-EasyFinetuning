@@ -44,7 +44,7 @@ While zero-shot voice cloning is convenient for quick tests, **Supervised Fine-T
 
 ### Host Development Environment
 Information about the environment used for developing and testing this project:
-- **OS**: Ubuntu 24.04.1 LTS (Kernel 6.8.0-53-generic)
+- **OS**: Ubuntu 24.04.4 LTS (Kernel 6.17.0-14-generic)
 - **CPU**: 2 x Intel(R) Xeon(R) Platinum 8259CL (KVM, 32 cores)
 - **Memory**: 32 GB
 - **GPU**: 2 x NVIDIA GeForce RTX 3080 (10 GB VRAM each)
