@@ -61,11 +61,12 @@
 
 **使用 Docker (推荐)**
 ```bash
-# 默认从 GHCR 拉取预构建镜像
-docker compose up -d
-
-# 中国大陆用户可以带上参数使用阿里云镜像源，以获得极速下载体验：
+# 中国大陆用户可以使用阿里云镜像源以获得极速下载体验：
+# (Linux)
 DOCKER_IMAGE=registry.cn-hangzhou.aliyuncs.com/mozi1924/qwen3-tts-easyfinetuning:latest docker compose up -d
+
+# (Windows PowerShell)
+$env:DOCKER_IMAGE="registry.cn-hangzhou.aliyuncs.com/mozi1924/qwen3-tts-easyfinetuning:latest"; docker compose up -d
 
 # 如果需要强制本地构建
 docker compose up -d --build
@@ -73,6 +74,8 @@ docker compose up -d --build
 
 **使用 Python 虚拟环境**
 ```bash
+# 不推荐在 Windows 上运行，该方法在Windows下并未得到积极的维护和测试，请使用Docker，这是最高效、最稳定、最便捷的推荐方法。
+
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt

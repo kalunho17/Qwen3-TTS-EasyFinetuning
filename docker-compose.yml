@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   tts-finetuner:
-    # For mainland China users, you can use the Aliyun mirror for faster downloads by setting the DOCKER_IMAGE env var,
+    # For mainland China users, you can use the Aliyun mirror for faster downloads by setting the DOCKER_IMAGE env var, 
     # or by uncommenting the following line:
     # image: registry.cn-hangzhou.aliyuncs.com/mozi1924/qwen3-tts-easyfinetuning:latest
     image: ${DOCKER_IMAGE:-ghcr.io/mozi1924/qwen3-tts-easyfinetuning:latest}
@@ -10,10 +10,13 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: qwen3-tts-finetuner
+    # Shared memory size for DataLoader (crucial for both Linux and Windows/WSL2 training)
+    shm_size: '2gb'
     ports:
       - "7860:7860"
       - "6006:6006"
     volumes:
+      # Use relative paths for better cross-platform support
       - ./final-dataset:/workspace/final-dataset
       - ./output:/workspace/output
       - ./logs:/workspace/logs
@@ -21,6 +24,8 @@ services:
       - ./raw-dataset:/workspace/raw-dataset
 
     restart: unless-stopped
+
+    # GPU Support (Works on Linux with nvidia-container-toolkit and Windows with WSL2)
     deploy:
       resources:
         reservations:
@@ -28,6 +33,7 @@ services:
             - driver: nvidia
               count: all
               capabilities: [ gpu ]
+
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - VLLM_USE_MODELSCOPE=true
