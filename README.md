@@ -40,6 +40,27 @@ While zero-shot voice cloning is convenient for quick tests, **Supervised Fine-T
 
 ---
 
+## 💻 Environment & Requirements
+
+### Host Development Environment
+Information about the environment used for developing and testing this project:
+- **OS**: Ubuntu 24.04.1 LTS (Kernel 6.8.0-53-generic)
+- **CPU**: 2 x Intel(R) Xeon(R) Platinum 8259CL (KVM, 32 cores)
+- **Memory**: 32 GB
+- **GPU**: 2 x NVIDIA GeForce RTX 3080 (10 GB VRAM each)
+- **Driver & CUDA**: NVIDIA Driver 590.48.01 / CUDA 13.1
+- **Python**: 3.11.14
+
+### Recommended Training Environment
+To ensure stable training and avoid Out-of-Memory (OOM) errors, we recommend:
+- **GPU**: NVIDIA GPU with >= 16 GB VRAM (24 GB recommended for 1.7B model)
+- **Memory**: >= 32 GB RAM
+- **Storage**: SSD with at least 50 GB free space
+- **OS**: Linux (Ubuntu 20.04+ recommended)
+- **Software**: CUDA 11.8+ (v12.1+ recommended), Python 3.10+
+
+---
+
 ## 🚀 Getting Started
 
 ### 1. Installation
