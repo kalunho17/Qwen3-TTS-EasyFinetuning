@@ -51,7 +51,13 @@
 - **内存**: >= 32 GB RAM
 - **存储**: SSD 固态硬盘，剩余空间至少 50 GB
 - **系统**: Linux (推荐 Ubuntu 20.04+)
-- **软件**: CUDA 11.8+ (推荐 v12.1+), Python 3.10+
+- **软件**: CUDA 12.4+ (推荐 v12.8+), Python 3.10+
+
+> **⚠️ Windows 用户特别注意（关于 GPU 训练）:**
+> 由于底层架构限制，在 Windows 平台下强依赖 GPU 时，请**避免使用 Rancher Desktop**（无法原生支持 Nvidia GPU）。请选择以下三种方案之一：
+> 1. **在真实的 Linux GPU 主机上运行**（最推荐，性能最好，最稳定）。
+> 2. **使用原生的 WSL2 (Ubuntu) 环境**（推荐，通过 WSL2 直接运行原生 Docker Engine 或配置原生 Python 环境，可无缝调用 GPU）。
+> 3. **使用 Docker Desktop**（支持 GPU，但需注意 Docker Desktop 本身的性能开销极大，且不保证在所有 Windows 环境下绝对可用/稳定）。
 
 ---
 

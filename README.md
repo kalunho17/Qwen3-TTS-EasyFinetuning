@@ -57,7 +57,13 @@ To ensure stable training and avoid Out-of-Memory (OOM) errors, we recommend:
 - **Memory**: >= 32 GB RAM
 - **Storage**: SSD with at least 50 GB free space
 - **OS**: Linux (Ubuntu 20.04+ recommended)
-- **Software**: CUDA 11.8+ (v12.1+ recommended), Python 3.10+
+- **Software**: CUDA 12.4+ (v12.8+ recommended), Python 3.10+
+
+> **⚠️ Special Note for Windows Users (GPU Training):**
+> Due to architectural limitations, **do not use Rancher Desktop** if you require GPU support on Windows, as it lacks native Nvidia GPU capabilities. Instead, choose one of the following:
+> 1. **Run on a native Linux GPU host** (Highly Recommended: best performance and stability).
+> 2. **Use pure WSL2 (Ubuntu)** (Recommended: install native Docker Engine or Python in WSL2 for seamless GPU access).
+> 3. **Use Docker Desktop** (Supports GPU, but comes with significant performance overhead and is not guaranteed to be perfectly stable/usable on all Windows configurations).
 
 ---
 
