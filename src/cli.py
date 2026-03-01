@@ -90,7 +90,7 @@ def cmd_split(args):
     audio_24k_dir = os.path.join(speaker_dir, "audio_24k")
     ref_audio = resolve_path(args.ref_audio) if args.ref_audio else None
     
-    consume_generator(run_step_1(resolve_path(args.input_dir), audio_24k_dir, ref_audio))
+    consume_generator(run_step_1(resolve_path(args.input_dir), audio_24k_dir, ref_audio, num_threads=args.threads))
 
 
 def cmd_asr(args):
@@ -374,12 +374,14 @@ Examples:
     p_prepare.add_argument("--batch_size", type=int, default=16, help="ASR batch size")
     p_prepare.add_argument("--model_source", type=str, choices=["HuggingFace", "ModelScope"], default="HuggingFace", help="Model download source")
     p_prepare.add_argument("--gpu", type=str, default="cuda:0", help="GPU device (e.g., cuda:0, cpu)")
+    p_prepare.add_argument("--threads", type=int, default=6, help="Number of threads for audio split")
 
     # ── split (Step 1) ──
     p_split = subparsers.add_parser("split", help="Step 1: Audio Split & Resample")
     p_split.add_argument("--input_dir", type=str, required=True)
     p_split.add_argument("--speaker_name", type=str, required=True)
     p_split.add_argument("--ref_audio", type=str, default=None)
+    p_split.add_argument("--threads", type=int, default=6, help="Number of threads for audio split")
 
     # ── asr (Step 2) ──
     p_asr = subparsers.add_parser("asr", help="Step 2: ASR Transcription & Cleaning")

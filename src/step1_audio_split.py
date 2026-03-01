@@ -29,9 +29,11 @@ def resample_audio(src_path, dest_path, target_sr=24000):
         log_error(f"Error converting audio {src_path}: {e}")
         return False
 
-def split_audio(audio_path, output_dir_base, filename_prefix, max_duration_ms=15000, min_duration_ms=1000):
+def split_audio(audio_path, output_dir_base, filename_prefix, max_duration_ms=15000, min_duration_ms=1000, target_sr=24000):
     try:
         audio = AudioSegment.from_file(audio_path)
+        if audio.frame_rate != target_sr:
+            audio = audio.set_frame_rate(target_sr)
     except Exception as e:
         log_error(f"Error reading {audio_path}: {e}")
         return []
@@ -74,7 +76,7 @@ def split_audio(audio_path, output_dir_base, filename_prefix, max_duration_ms=15
             
     return segment_paths
 
-def run_step_1(input_dir, output_dir, ref_audio=None):
+def run_step_1(input_dir, output_dir, ref_audio=None, num_threads=6):
     try:
         os.makedirs(output_dir, exist_ok=True)
         
@@ -93,39 +95,21 @@ def run_step_1(input_dir, output_dir, ref_audio=None):
             return
             
         all_segments = []
-        num_workers = max(1, multiprocessing.cpu_count() - 1)
-        yield {"type": "progress", "progress": 0.1, "desc": f"Splitting {len(wav_files)} files using {num_workers} cores..."}
+        yield {"type": "progress", "progress": 0.1, "desc": f"Splitting and resampling {len(wav_files)} files using {num_threads} threads..."}
         
-        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
             futures = {
                 executor.submit(split_audio, wav_path, output_dir, os.path.splitext(os.path.basename(wav_path))[0]): wav_path
                 for wav_path in wav_files
             }
             
             for idx, future in enumerate(concurrent.futures.as_completed(futures)):
-                yield {"type": "progress", "progress": 0.1 + 0.4 * (idx / max(1, len(wav_files))), "desc": f"Splitting {idx+1}/{len(wav_files)}"}
+                yield {"type": "progress", "progress": 0.1 + 0.8 * (idx / max(1, len(wav_files))), "desc": f"Processing {idx+1}/{len(wav_files)}"}
                 try:
                     segs = future.result()
                     all_segments.extend([os.path.abspath(s) for s in segs])
                 except Exception as e:
-                    yield {"type": "error", "msg": f"Error in parallel split: {str(e)}"}
-            
-        yield {"type": "progress", "progress": 0.5, "desc": f"Resampling {len(all_segments)} segments using {num_workers} cores..."}
-        
-        # Resample all segments to 24kHz in place
-        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-            futures = {
-                executor.submit(resample_audio, seg, seg): seg 
-                for seg in all_segments
-            }
-            
-            for idx, future in enumerate(concurrent.futures.as_completed(futures)):
-                if idx % max(1, len(all_segments) // 25) == 0 or idx == len(all_segments) - 1:
-                    yield {"type": "progress", "progress": 0.5 + 0.4 * (idx / max(1, len(all_segments))), "desc": f"Resampling {idx+1}/{len(all_segments)}"}
-                try:
-                    future.result()
-                except Exception as e:
-                    yield {"type": "error", "msg": f"Error in parallel resample: {str(e)}"}
+                    yield {"type": "error", "msg": f"Error in processing: {str(e)}"}
             
         yield {"type": "done", "msg": f"Successfully split and resampled {len(all_segments)} segments."}
         

@@ -35,7 +35,10 @@ def run_step_2(input_dir, ref_audio, output_jsonl, model_id="Qwen/Qwen3-ASR-1.7B
             yield {"type": "error", "msg": f"No .wav files found in {input_dir}"}
             return
             
-        final_entries = []
+        if os.path.exists(output_jsonl):
+            os.remove(output_jsonl)
+
+        final_entries_count = 0
         total_batches = len(wav_files) // batch_size + (1 if len(wav_files) % batch_size else 0)
         
         yield {"type": "progress", "progress": 0.1, "desc": "Starting transcription..."}
@@ -48,27 +51,25 @@ def run_step_2(input_dir, ref_audio, output_jsonl, model_id="Qwen/Qwen3-ASR-1.7B
             batch_paths = wav_files[i : i + batch_size]
             try:
                 results = asr_model.transcribe(audio=batch_paths)
-                for path, res in zip(batch_paths, results):
-                    text = res.text
-                    if not text: continue
-                    cleaned_text = text.strip()
-                    if not cleaned_text: continue
-                    
-                    final_entries.append({
-                        "audio": os.path.relpath(path, start=root_dir),
-                        "text": cleaned_text,
-                        "ref_audio": os.path.relpath(ref_audio, start=root_dir) if ref_audio else ""
-                    })
+                with open(output_jsonl, "a", encoding="utf-8") as f_out:
+                    for path, res in zip(batch_paths, results):
+                        text = res.text
+                        if not text: continue
+                        cleaned_text = text.strip()
+                        if not cleaned_text: continue
+                        
+                        entry = {
+                            "audio": os.path.relpath(path, start=root_dir),
+                            "text": cleaned_text,
+                            "ref_audio": os.path.relpath(ref_audio, start=root_dir) if ref_audio else ""
+                        }
+                        f_out.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                        final_entries_count += 1
             except Exception as e:
                 yield {"type": "error", "msg": f"Error transcribing batch {i}: {e}"}
                 continue
                 
-        yield {"type": "progress", "progress": 0.98, "desc": "Writing JSONL data..."}
-        with open(output_jsonl, "w", encoding="utf-8") as f_out:
-            for entry in final_entries:
-                f_out.write(json.dumps(entry, ensure_ascii=False) + "\n")
-                
-        yield {"type": "done", "msg": f"Successfully transcribed {len(final_entries)} segments to {output_jsonl}."}
+        yield {"type": "done", "msg": f"Successfully transcribed {final_entries_count} segments to {output_jsonl}."}
 
     except Exception as e:
         yield {"type": "error", "msg": f"Unhandled exception in step 2: {str(e)}"}

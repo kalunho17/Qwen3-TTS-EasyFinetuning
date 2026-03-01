@@ -172,7 +172,7 @@ def stream_isolated(func, *args, **kwargs):
     p.join()
 
 # ----------------- Step 1: Audio Split -----------------
-def run_step_1(input_dir, speaker_name, ref_audio, progress=gr.Progress()):
+def run_step_1(input_dir, speaker_name, ref_audio, num_threads=6, progress=gr.Progress()):
     if not speaker_name.strip(): 
         yield "Please specify a Speaker Name first."
         return
@@ -182,7 +182,7 @@ def run_step_1(input_dir, speaker_name, ref_audio, progress=gr.Progress()):
     last_status = "Starting..."
     ref_path = resolve_path(ref_audio) if ref_audio else None
     
-    for item in stream_isolated(internal_run_step_1, resolve_path(input_dir), output_dir, ref_path):
+    for item in stream_isolated(internal_run_step_1, resolve_path(input_dir), output_dir, ref_path, num_threads=num_threads):
         if isinstance(item, dict):
             msg_type = item.get("type", "")
             if msg_type == "progress":
@@ -801,6 +801,12 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning", css=css) as app:
                         info="Optional: Resampled to 24k",
                         scale=1
                     )
+                    num_threads = gr.Slider(
+                        minimum=1, maximum=32, step=1, value=6,
+                        label="Processing Threads",
+                        info="Number of threads for audio splitting",
+                        scale=1
+                    )
                 
                 with gr.Row():
                     step1_btn = gr.Button("▶️ Run Step 1: Audio Split & Ref Process", variant="primary", scale=4)
@@ -983,7 +989,7 @@ with gr.Blocks(title="Qwen3-TTS Easy Finetuning", css=css) as app:
 
     step1_btn.click(
         fn=run_step_1, 
-        inputs=[input_dir, global_speaker_input, ref_audio], 
+        inputs=[input_dir, global_speaker_input, ref_audio, num_threads], 
         outputs=[step1_out]
     )
 
