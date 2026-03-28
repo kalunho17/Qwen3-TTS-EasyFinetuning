@@ -62,6 +62,8 @@ global_tts_model = None
 global_tts_model_path = None
 global_tts_device = None
 global_training_process = None
+global_inference_busy = False
+global_model_lock = threading.Lock()
 
 # Removed redundant models_config.json loading as it is not present and presets are hardcoded below
 
@@ -394,6 +396,23 @@ def stop_training():
         return "Notified training process to abort safely!"
     return "No training process currently running."
 
+def _load_speakers_from_config(model_path):
+    if not model_path:
+        return []
+    try:
+        config_path = os.path.join(get_model_path(model_path, use_hf=False), "config.json")
+        if not os.path.exists(config_path):
+            return []
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        spk_id = data.get("talker_config", {}).get("spk_id", {})
+        if isinstance(spk_id, dict):
+            return list(spk_id.keys())
+    except Exception:
+        pass
+    return []
+
+
 def _get_model_capabilities(tts_model):
     speakers = []
     languages = []
@@ -401,6 +420,8 @@ def _get_model_capabilities(tts_model):
         speakers = tts_model.get_supported_speakers()
     if hasattr(tts_model, "get_supported_languages"):
         languages = tts_model.get_supported_languages()
+    if not speakers:
+        speakers = _load_speakers_from_config(global_tts_model_path)
     return speakers, languages
 
 
