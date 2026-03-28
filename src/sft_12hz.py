@@ -428,7 +428,7 @@ def run_train(
         if not speaker_names:
             speaker_names = ["speaker_test"]
 
-        spk_id_map = {name: 3000 + idx for idx, name in enumerate(speaker_names)}
+        spk_id_map = {name: 3000 + idx * 20 for idx, name in enumerate(speaker_names)}
 
         def log_print(msg):
             if accelerator is not None:
