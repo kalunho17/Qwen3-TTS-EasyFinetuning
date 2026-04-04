@@ -87,6 +87,38 @@ $env:DOCKER_IMAGE="registry.cn-hangzhou.aliyuncs.com/mozi1924/qwen3-tts-easyfine
 docker compose up -d --build
 ```
 
+**Manual `docker run` (GPU, WebUI, TensorBoard, host models)**
+
+Build a CUDA image (tag name is arbitrary; adjust to match the `docker run` below):
+
+```bash
+docker build -t qwen3tts-train:cuda .
+```
+
+Example run with GPU, shared memory-friendly limits, port forwards, and host directories mounted into the container paths expected by this project. **Change the host paths** (`$(pwd)/experiment`, `/data/models/...`, `/data/outputs/...`) to match your machine.
+
+```bash
+docker run -dt --gpus all \
+  --name qwen3tts-train \
+  --ipc=host \
+  --ulimit memlock=-1 \
+  --ulimit stack=67108864 \
+  -p 8000:7860 \
+  -p 6006:6006 \
+  -v "$(pwd)/experiment":/workspace/raw-dataset \
+  -v "$(pwd)/final-dataset":/workspace/final-dataset \
+  -v /data/models/5_transcript/Qwen3-ASR-1.7B:/workspace/models/Qwen/Qwen3-ASR-1.7B \
+  -v /data/models/2_tts/Qwen3-TTS-12Hz-1.7B-Base:/workspace/models/Qwen/Qwen3-TTS-12Hz-1.7B-Base \
+  -v /data/models/2_tts/Qwen3-TTS-12Hz-0.6B-Base:/workspace/models/Qwen/Qwen3-TTS-12Hz-0.6B-Base \
+  -v /data/models/2_tts/Qwen3-TTS-Tokenizer-12Hz:/workspace/models/Qwen/Qwen3-TTS-Tokenizer-12Hz \
+  -v /data/outputs/qwen3tts-train:/workspace/finetune-repo/output \
+  qwen3tts-train:cuda
+```
+
+- **Ports**: `8000` on the host maps to Gradio inside the container (`7860`). `6006` is for TensorBoard.
+- **Checkpoints**: The CLI writes training outputs to `output/<experiment_name>` under the repo root, so mount your host directory to `/workspace/finetune-repo/output` (not `/workspace/output`) if you want checkpoints on the host.
+- **Shell**: `docker exec -it qwen3tts-train bash` — the default working directory is `/workspace/finetune-repo`; CLI commands use `python src/cli.py`.
+
 **Using Python Virtual Environment**
 ```bash
 # Running this directly in a Windows environment is not actively maintained and is not planned for further maintenance. Please use Docker, which is the fastest, most stable, and most efficient recommended method.
@@ -125,6 +157,69 @@ python src/cli.py train --experiment_name exp1 --speaker_name my_speaker --epoch
 **Step C: Run Inference**
 ```bash
 python src/cli.py infer --checkpoint output/exp1/checkpoint-epoch-2 --speaker my_speaker --text "Hello world! This is my custom voice."
+```
+
+**Batch inference (folder of `.txt` files)**  
+Put one utterance per file (UTF-8). The CLI loads the checkpoint once, then for each `*.txt` in the given directory (not subfolders) writes a `*.wav` with the same basename next to it.
+
+```bash
+python src/cli.py infer-batch \
+  --checkpoint output/exp1/checkpoint-epoch-2 \
+  --speaker my_speaker \
+  --text_dir path/to/txt_folder
+```
+
+**Full pipeline example (paths as in the `docker run` setup above)**
+
+Inside the container, with models and data mounted under `/workspace/...`:
+
+**1. Prepare**
+
+```bash
+python src/cli.py prepare \
+  --input_dir /workspace/raw-dataset \
+  --speaker_name my_speaker \
+  --experiment_name experiment \
+  --ref_audio /workspace/raw-dataset/ref.wav \
+  --asr_model /workspace/models/Qwen/Qwen3-ASR-1.7B \
+  --batch_size 8 \
+  --model_source HuggingFace
+```
+
+**2. Train**
+
+```bash
+python src/cli.py train \
+  --experiment_name experiment \
+  --speaker_name my_speaker \
+  --init_model /workspace/models/Qwen/Qwen3-TTS-12Hz-1.7B-Base \
+  --batch_size 8 \
+  --lr 1e-07 \
+  --save_strategy step \
+  --save_steps 50 \
+  --epochs 3 \
+  --keep_last_n_checkpoints 3
+```
+
+**3. Inference**
+
+```bash
+python src/cli.py infer \
+  --checkpoint /workspace/finetune-repo/output/experiment/checkpoint-epoch-2 \
+  --speaker my_speaker \
+  --text "Hello world! This is my custom voice." \
+  --output "output.wav" \
+  --language English
+```
+
+**4. Batch inference (optional)**
+
+```bash
+python src/cli.py infer-batch \
+  --checkpoint /workspace/finetune-repo/output/experiment/checkpoint-epoch-2 \
+  --speaker my_speaker \
+  --text_dir /workspace/my_txt_lines \
+  --language English
 ```
 
 ---

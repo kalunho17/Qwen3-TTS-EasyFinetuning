@@ -8,7 +8,8 @@ Supports data preparation, training, and inference via subcommands.
 Usage:
     python cli.py prepare --input_dir /path/to/wavs --speaker_name my_speaker
     python cli.py train   --experiment_name exp1 --speaker_name my_speaker
-    python cli.py infer   --checkpoint output/exp1/checkpoint-epoch-1 --text "Hello world"
+    python cli.py infer        --checkpoint output/exp1/checkpoint-epoch-1 --text "Hello world"
+    python cli.py infer-batch  --checkpoint output/exp1/checkpoint-epoch-1 --text_dir ./lines
 """
 
 import os
@@ -315,6 +316,92 @@ def cmd_infer(args):
     print(f"  Saved to: {args.output}")
 
 
+def cmd_infer_batch(args):
+    """Run inference for each .txt in a directory; write .wav beside each file (same basename)."""
+    import torch
+    import soundfile as sf
+    from pathlib import Path
+
+    text_dir = Path(resolve_path(args.text_dir))
+    if not text_dir.is_dir():
+        print(f"\n  ❌ Not a directory: {args.text_dir}")
+        sys.exit(1)
+
+    txt_files = sorted(
+        p for p in text_dir.iterdir()
+        if p.is_file() and p.suffix.lower() == ".txt"
+    )
+    if not txt_files:
+        print(f"\n  ❌ No .txt files found in: {text_dir}")
+        sys.exit(1)
+
+    print_header("🔊 Qwen3-TTS Batch Inference")
+    print(f"  Checkpoint   : {args.checkpoint}")
+    print(f"  Text dir     : {text_dir}")
+    print(f"  Files        : {len(txt_files)} .txt")
+    print(f"  Speaker      : {args.speaker}")
+    print(f"  Language     : {args.language}")
+    print(f"  Instruct     : {args.instruct}")
+    print(f"  GPU Device   : {args.gpu}")
+
+    checkpoint_path = resolve_path(args.checkpoint)
+    if not os.path.exists(checkpoint_path):
+        checkpoint_path = get_model_path(args.checkpoint, use_hf=False)
+        if not os.path.exists(checkpoint_path):
+            print(f"\n  ❌ Checkpoint not found: {args.checkpoint}")
+            sys.exit(1)
+
+    args.checkpoint = checkpoint_path
+
+    print_step("Loading model...")
+    start = time.time()
+
+    from qwen_tts import Qwen3TTSModel
+
+    tts = Qwen3TTSModel.from_pretrained(
+        args.checkpoint,
+        device_map=args.gpu,
+        torch_dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2" if "cuda" in args.gpu else None,
+    )
+    print(f"    Model loaded in {time.time() - start:.2f}s")
+
+    supported_speakers = tts.get_supported_speakers() if hasattr(tts, "get_supported_speakers") else []
+    resolved_speaker = resolve_speaker_choice(args.speaker, supported_speakers)
+    if resolved_speaker != args.speaker:
+        print(f"    Speaker normalized: {args.speaker} -> {resolved_speaker}")
+
+    done = 0
+    skipped = 0
+    for i, txt_path in enumerate(txt_files, 1):
+        try:
+            text = txt_path.read_text(encoding="utf-8").strip()
+        except OSError as e:
+            print(f"\n    ❌ Skip {txt_path.name}: cannot read file ({e})")
+            skipped += 1
+            continue
+        if not text:
+            print(f"\n    ⚠ Skip {txt_path.name}: empty file")
+            skipped += 1
+            continue
+
+        wav_path = txt_path.with_suffix(".wav")
+        print_step(f"[{i}/{len(txt_files)}] {txt_path.name} → {wav_path.name}")
+        start = time.time()
+        wavs, sr = tts.generate_custom_voice(
+            text=text,
+            speaker=resolved_speaker,
+            language=args.language,
+            instruct=args.instruct,
+        )
+        sf.write(str(wav_path), wavs[0], sr)
+        print(f"    Done in {time.time() - start:.2f}s")
+        done += 1
+
+    print_header("✅ Batch Inference Complete!")
+    print(f"  Synthesized: {done}  Skipped: {skipped}")
+
+
 def cmd_query(args):
     """Query supported speakers and languages for a model."""
     import torch
@@ -383,7 +470,8 @@ Examples:
   python cli.py tokenize  --speaker_name speaker_a,speaker_b --experiment_name multi_exp
   python cli.py train     --experiment_name multi_exp --speaker_name speaker_a,speaker_b
 
-  python cli.py infer   --checkpoint output/exp1/checkpoint-epoch-1 --text "Hello world"
+  python cli.py infer        --checkpoint output/exp1/checkpoint-epoch-1 --text "Hello world"
+  python cli.py infer-batch  --checkpoint output/exp1/checkpoint-epoch-1 --text_dir ./my_lines
         """,
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -449,6 +537,23 @@ Examples:
     p_infer.add_argument("--output", type=str, default="output.wav", help="Output audio file path")
     p_infer.add_argument("--gpu", type=str, default="cuda:0", help="GPU device")
 
+    # ── infer-batch ──
+    p_infer_batch = subparsers.add_parser(
+        "infer-batch",
+        help="Batch inference: each .txt in a folder → same-named .wav next to it",
+    )
+    p_infer_batch.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint directory")
+    p_infer_batch.add_argument(
+        "--text_dir",
+        type=str,
+        required=True,
+        help="Directory containing .txt files (non-recursive; writes .wav in the same folder)",
+    )
+    p_infer_batch.add_argument("--speaker", type=str, default="my_speaker", help="Speaker name used in training")
+    p_infer_batch.add_argument("--language", type=str, default="English", help="Language for synthesis")
+    p_infer_batch.add_argument("--instruct", type=str, default=None, help="Optional instruct for synthesis")
+    p_infer_batch.add_argument("--gpu", type=str, default="cuda:0", help="GPU device")
+
     # ── query ──
     p_query = subparsers.add_parser("query", help="Query supported speakers and languages")
     p_query.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint")
@@ -472,6 +577,8 @@ Examples:
         cmd_train(args)
     elif args.command == "infer":
         cmd_infer(args)
+    elif args.command == "infer-batch":
+        cmd_infer_batch(args)
     elif args.command == "query":
         cmd_query(args)
 
