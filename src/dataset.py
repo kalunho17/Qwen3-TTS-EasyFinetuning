@@ -16,6 +16,7 @@
 from typing import Any, List, Tuple, Union
 
 import librosa
+from utils import resolve_audio_file_path
 import numpy as np
 import torch
 from qwen_tts.core.models.configuration_qwen3_tts import Qwen3TTSConfig
@@ -43,7 +44,7 @@ class TTSDataset(Dataset):
     
     def _load_audio_to_np(self, x: str) -> Tuple[np.ndarray, int]:
         
-        audio, sr = librosa.load(x, sr=24000, mono=True)
+        audio, sr = librosa.load(resolve_audio_file_path(x), sr=24000, mono=True)
 
         if audio.ndim > 1:
             audio = np.mean(audio, axis=-1)

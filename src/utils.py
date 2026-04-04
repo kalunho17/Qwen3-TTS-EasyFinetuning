@@ -5,9 +5,15 @@ import shutil
 
 def get_project_root():
     '''Detect the project root directory.
-    In Docker, it's usually /workspace.
+    FINETUNE_BASE overrides everything when set (e.g. Docker clone at /workspace/finetune-repo).
+    In Docker without FINETUNE_BASE, default is /workspace (legacy layout).
     Otherwise, it's the parent directory of this src file.
     '''
+    env_base = os.environ.get("FINETUNE_BASE")
+    if env_base:
+        env_base = os.path.abspath(env_base)
+        if os.path.isdir(env_base):
+            return env_base
     if os.path.exists('/.dockerenv') or os.environ.get('IS_DOCKER'):
         return '/workspace'
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,6 +24,24 @@ def resolve_path(path):
     if os.path.isabs(path):
         return path
     return os.path.abspath(os.path.join(get_project_root(), path))
+
+
+def resolve_audio_file_path(path: str) -> str:
+    """Resolve a JSONL audio path for librosa: absolute path under project root, file must exist."""
+    if not path:
+        raise ValueError(
+            "Audio path is empty in JSONL. "
+            "Re-run the ASR and tokenisation steps and check tts_train.jsonl."
+        )
+    if path.startswith(("http://", "https://")):
+        return path
+    root = get_project_root()
+    if not os.path.isabs(path):
+        path = os.path.join(root, path)
+    path = os.path.normpath(path)
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Audio file not found: {path!r}")
+    return path
 
 
 def get_model_local_dir(model_id):
