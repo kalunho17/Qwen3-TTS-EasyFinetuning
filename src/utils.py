@@ -42,11 +42,21 @@ def get_models_root():
             if os.path.isabs(raw):
                 return os.path.abspath(raw)
             return resolve_path(raw)
-    project_root = get_project_root()
-    # Do not require /workspace/models to exist yet (bind mount may appear later or
-    # first run); makedirs in get_model_path will create .../Qwen/<id> as needed.
-    if project_root == "/workspace" or project_root.startswith("/workspace/"):
-        return "/workspace/models"
+
+    # Dockerfile sets FINETUNE_BASE=/workspace/finetune-repo; weights belong in sibling
+    # /workspace/models (compose bind mount). This does not depend on string prefix checks
+    # that can fail with odd abspath/cwd combinations.
+    finetune_base_raw = os.environ.get("FINETUNE_BASE", "").strip()
+    if finetune_base_raw:
+        fb_abs = os.path.normpath(os.path.abspath(finetune_base_raw))
+        if os.path.isdir(fb_abs) and os.path.basename(fb_abs) == "finetune-repo":
+            return os.path.join(os.path.dirname(fb_abs), "models")
+
+    project_root = os.path.normpath(get_project_root())
+    workspace = os.path.normpath("/workspace")
+    sep = os.sep
+    if project_root == workspace or project_root.startswith(workspace + sep):
+        return os.path.join(workspace, "models")
     return os.path.join(project_root, "models")
 
 
