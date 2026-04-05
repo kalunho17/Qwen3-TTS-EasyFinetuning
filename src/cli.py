@@ -161,7 +161,8 @@ def cmd_tokenize(args):
             print(f"  ❌ File {input_jsonl} not found.")
             sys.exit(1)
     
-    resolved_tokenizer = get_model_path("Qwen/Qwen3-TTS-Tokenizer-12Hz", use_hf=False)
+    # ModelScope for repo ids (same as before). Pass an absolute --tokenizer_model to load from disk.
+    resolved_tokenizer = get_model_path(args.tokenizer_model, use_hf=False)
     device = "cuda:0" if args.gpu != "cpu" else "cpu"
     
     consume_generator(run_prepare(device, resolved_tokenizer, input_jsonl, output_codes_jsonl))
@@ -488,6 +489,12 @@ Examples:
     p_prepare.add_argument("--gpu", type=str, default="cuda:0", help="GPU device (e.g., cuda:0, cpu)")
     p_prepare.add_argument("--threads", type=int, default=6, help="Number of threads for audio split")
     p_prepare.add_argument("--skip_split", action="store_true", help="Skip segmentation and only resample each input wav to 24k")
+    p_prepare.add_argument(
+        "--tokenizer_model",
+        type=str,
+        default="Qwen/Qwen3-TTS-Tokenizer-12Hz",
+        help="Tokenizer model ID or absolute path (use same base as ASR in Docker, e.g. /workspace/models/Qwen/Qwen3-TTS-Tokenizer-12Hz)",
+    )
 
     # ── split (Step 1) ──
     p_split = subparsers.add_parser("split", help="Step 1: Audio Split & Resample")
@@ -510,6 +517,12 @@ Examples:
     p_tokenize.add_argument("--speaker_name", type=str, required=True, help="Speaker name(s), comma-separated for multi-speaker")
     p_tokenize.add_argument("--experiment_name", type=str, required=True, help="Experiment name for saving logs/codes")
     p_tokenize.add_argument("--gpu", type=str, default="cuda:0")
+    p_tokenize.add_argument(
+        "--tokenizer_model",
+        type=str,
+        default="Qwen/Qwen3-TTS-Tokenizer-12Hz",
+        help="Tokenizer model ID or absolute path",
+    )
 
     # ── train ──
     p_train = subparsers.add_parser("train", help="Run fine-tuning training (supports multi-speaker)")

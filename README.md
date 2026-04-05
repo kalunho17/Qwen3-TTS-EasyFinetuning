@@ -105,14 +105,14 @@ docker run -dt --gpus all \
   --ulimit stack=67108864 \
   -p 8000:7860 \
   -p 6006:6006 \
-  -v "$(pwd)/experiment":/workspace/raw-dataset \
-  -v "$(pwd)/final-dataset":/workspace/final-dataset \
+  -v "$(pwd)/maxpayne":/workspace/raw-dataset \
+  -v "$(pwd)/batch_text":/workspace/batch_text \
+  -v /data/outputs/qwen3tts-train:/workspace/output \
   -v /data/models/5_transcript/Qwen3-ASR-1.7B:/workspace/models/Qwen/Qwen3-ASR-1.7B \
   -v /data/models/2_tts/Qwen3-TTS-12Hz-1.7B-Base:/workspace/models/Qwen/Qwen3-TTS-12Hz-1.7B-Base \
   -v /data/models/2_tts/Qwen3-TTS-12Hz-0.6B-Base:/workspace/models/Qwen/Qwen3-TTS-12Hz-0.6B-Base \
   -v /data/models/2_tts/Qwen3-TTS-Tokenizer-12Hz:/workspace/models/Qwen/Qwen3-TTS-Tokenizer-12Hz \
-  -v /data/outputs/qwen3tts-train:/workspace/finetune-repo/output \
-  qwen3tts-train:cuda
+  qwen3-tts-train:cuda
 ```
 
 - **Ports**: `8000` on the host maps to Gradio inside the container (`7860`). `6006` is for TensorBoard.
@@ -176,10 +176,10 @@ Inside the container, with models and data mounted under `/workspace/...`:
 **1. Prepare**
 
 ```bash
-python src/cli.py prepare \
+python finetune-repo/src/cli.py prepare \
   --input_dir /workspace/raw-dataset \
   --speaker_name my_speaker \
-  --experiment_name experiment \
+  --experiment_name maxpayne \
   --ref_audio /workspace/raw-dataset/ref.wav \
   --asr_model /workspace/models/Qwen/Qwen3-ASR-1.7B \
   --batch_size 8 \
@@ -189,8 +189,8 @@ python src/cli.py prepare \
 **2. Train**
 
 ```bash
-python src/cli.py train \
-  --experiment_name experiment \
+python finetune-repo/src/cli.py train \
+  --experiment_name maxpayne \
   --speaker_name my_speaker \
   --init_model /workspace/models/Qwen/Qwen3-TTS-12Hz-1.7B-Base \
   --batch_size 8 \
@@ -204,18 +204,18 @@ python src/cli.py train \
 **3. Inference**
 
 ```bash
-python src/cli.py infer \
-  --checkpoint /workspace/finetune-repo/output/experiment/checkpoint-epoch-2 \
-  --speaker my_speaker \
-  --text "Hello world! This is my custom voice." \
-  --output "output.wav" \
-  --language English
+python finetune-repo/src/cli.py infer \
+   --checkpoint /workspace/output/maxpayne/checkpoint-epoch-2 \
+   --speaker my_speaker \
+   --text "Hello world! This is my custom voice." \
+   --output "output.wav" \
+   --language English
 ```
 
 **4. Batch inference (optional)**
 
 ```bash
-python src/cli.py infer-batch \
+python finetune-repo/src/cli.py infer-batch \
   --checkpoint /workspace/finetune-repo/output/experiment/checkpoint-epoch-2 \
   --speaker my_speaker \
   --text_dir /workspace/my_txt_lines \
