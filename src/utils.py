@@ -43,11 +43,10 @@ def get_models_root():
                 return os.path.abspath(raw)
             return resolve_path(raw)
     project_root = get_project_root()
-    workspace_models = "/workspace/models"
-    if os.path.isdir(workspace_models) and (
-        project_root == "/workspace" or project_root.startswith("/workspace/")
-    ):
-        return workspace_models
+    # Do not require /workspace/models to exist yet (bind mount may appear later or
+    # first run); makedirs in get_model_path will create .../Qwen/<id> as needed.
+    if project_root == "/workspace" or project_root.startswith("/workspace/"):
+        return "/workspace/models"
     return os.path.join(project_root, "models")
 
 
