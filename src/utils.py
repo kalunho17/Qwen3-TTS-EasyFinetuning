@@ -26,6 +26,31 @@ def resolve_path(path):
     return os.path.abspath(os.path.join(get_project_root(), path))
 
 
+def get_models_root():
+    """Root directory for downloaded models (repo id → <root>/Qwen/...).
+
+    Docker Compose typically mounts host ./models at /workspace/models while FINETUNE_BASE
+    points at /workspace/finetune-repo. Without this, models land under finetune-repo/models
+    and disagree with ASR loaded from /workspace/models/....
+
+    Override with FINETUNE_MODELS_DIR or MODELS_DIR (absolute or relative to cwd is not used —
+    non-absolute values are resolved from project root).
+    """
+    for key in ("FINETUNE_MODELS_DIR", "MODELS_DIR"):
+        raw = os.environ.get(key)
+        if raw:
+            if os.path.isabs(raw):
+                return os.path.abspath(raw)
+            return resolve_path(raw)
+    project_root = get_project_root()
+    workspace_models = "/workspace/models"
+    if os.path.isdir(workspace_models) and (
+        project_root == "/workspace" or project_root.startswith("/workspace/")
+    ):
+        return workspace_models
+    return os.path.join(project_root, "models")
+
+
 def resolve_audio_file_path(path: str) -> str:
     """Resolve a JSONL audio path for librosa: absolute path under project root, file must exist."""
     if not path:
@@ -45,8 +70,7 @@ def resolve_audio_file_path(path: str) -> str:
 
 
 def get_model_local_dir(model_id):
-    root = get_project_root()
-    return os.path.join(root, 'models', model_id)
+    return os.path.join(get_models_root(), model_id)
 
 
 
@@ -140,7 +164,7 @@ def get_model_path(model_id, use_hf=False):
             downloaded_path = snapshot_download(repo_id=model_id, local_dir=local_dir)
         else:
             from modelscope import snapshot_download
-            downloaded_path = snapshot_download(model_id, cache_dir=os.path.join(get_project_root(), 'models'))
+            downloaded_path = snapshot_download(model_id, cache_dir=get_models_root())
         return _ensure_shared_model_dir(model_id, downloaded_path)
     except Exception as e:
         print(f'Warning: Download failed, falling back to id: {e}')
