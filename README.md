@@ -116,7 +116,7 @@ docker run -dt --gpus all \
 ```
 
 - **Ports**: `8000` on the host maps to Gradio inside the container (`7860`). `6006` is for TensorBoard.
-- **Checkpoints**: The CLI writes training outputs to `output/<experiment_name>` under the repo root, so mount your host directory to `/workspace/finetune-repo/output` (not `/workspace/output`) if you want checkpoints on the host.
+- **Checkpoints**: Training writes to `/workspace/output/<experiment_name>/` when using the default Docker `FINETUNE_BASE=/workspace/finetune-repo` (same pattern as models living under `/workspace/models`). Mount your host dir to `/workspace/output` to persist checkpoints. Override with `FINETUNE_OUTPUT_DIR` or `python src/cli.py train ... --output_root /path/to/parent`.
 - **Shell**: `docker exec -it qwen3tts-train bash` — the default working directory is `/workspace/finetune-repo`; CLI commands use `python src/cli.py`.
 
 **Using Python Virtual Environment**
@@ -176,7 +176,7 @@ Inside the container, with models and data mounted under `/workspace/...`:
 **1. Prepare**
 
 ```bash
-python finetune-repo/src/cli.py prepare \
+python src/cli.py prepare \
   --input_dir /workspace/raw-dataset \
   --speaker_name my_speaker \
   --experiment_name maxpayne \
@@ -189,7 +189,7 @@ python finetune-repo/src/cli.py prepare \
 **2. Train**
 
 ```bash
-python finetune-repo/src/cli.py train \
+python src/cli.py train \
   --experiment_name maxpayne \
   --speaker_name my_speaker \
   --init_model /workspace/models/Qwen/Qwen3-TTS-12Hz-1.7B-Base \
@@ -204,7 +204,7 @@ python finetune-repo/src/cli.py train \
 **3. Inference**
 
 ```bash
-python finetune-repo/src/cli.py infer \
+python src/cli.py infer \
    --checkpoint /workspace/output/maxpayne/checkpoint-epoch-2 \
    --speaker my_speaker \
    --text "Hello world! This is my custom voice." \
@@ -215,7 +215,7 @@ python finetune-repo/src/cli.py infer \
 **4. Batch inference (optional)**
 
 ```bash
-python finetune-repo/src/cli.py infer-batch \
+python src/cli.py infer-batch \
   --checkpoint /workspace/finetune-repo/output/experiment/checkpoint-epoch-2 \
   --speaker my_speaker \
   --text_dir /workspace/my_txt_lines \

@@ -60,6 +60,36 @@ def get_models_root():
     return os.path.join(project_root, "models")
 
 
+def get_outputs_root(cli_override=None):
+    """Root for training checkpoints: <root>/<experiment_name>/checkpoint-epoch-*/...
+
+    Resolution order:
+    1. ``cli_override`` (train --output_root) if non-empty
+    2. ``FINETUNE_OUTPUT_DIR`` (absolute or relative to project root)
+    3. If ``FINETUNE_BASE`` is .../finetune-repo, sibling ``.../output`` (Docker: /workspace/output)
+    4. Else ``<project_root>/output``
+    """
+    if cli_override is not None and str(cli_override).strip():
+        raw = str(cli_override).strip()
+        if os.path.isabs(raw):
+            return os.path.abspath(raw)
+        return resolve_path(raw)
+
+    env_raw = os.environ.get("FINETUNE_OUTPUT_DIR", "").strip()
+    if env_raw:
+        if os.path.isabs(env_raw):
+            return os.path.abspath(env_raw)
+        return resolve_path(env_raw)
+
+    finetune_base_raw = os.environ.get("FINETUNE_BASE", "").strip()
+    if finetune_base_raw:
+        fb_abs = os.path.normpath(os.path.abspath(finetune_base_raw))
+        if os.path.isdir(fb_abs) and os.path.basename(fb_abs) == "finetune-repo":
+            return os.path.join(os.path.dirname(fb_abs), "output")
+
+    return os.path.join(get_project_root(), "output")
+
+
 def resolve_audio_file_path(path: str) -> str:
     """Resolve a JSONL audio path for librosa: absolute path under project root, file must exist."""
     if not path:
@@ -157,7 +187,7 @@ def get_model_path(model_id, use_hf=False):
     resolved_input = resolve_path(model_id)
     if os.path.exists(resolved_input):
         return resolved_input
-    output_candidate = resolve_path(os.path.join('output', model_id))
+    output_candidate = os.path.join(get_outputs_root(), model_id)
     if os.path.exists(output_candidate):
         print(f'Found local checkpoint at {output_candidate}')
         return output_candidate

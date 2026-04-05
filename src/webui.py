@@ -13,7 +13,7 @@ import time
 import torch
 import gc
 import sys
-from utils import get_model_path, get_model_local_dir, get_project_root, resolve_path, resolve_speaker_choice
+from utils import get_model_path, get_model_local_dir, get_outputs_root, get_project_root, resolve_path, resolve_speaker_choice
 from webui_training import (
     get_checkpoints,
     normalize_speaker_name,
@@ -323,7 +323,7 @@ def start_training(
     if not os.path.exists(train_jsonl):
         yield f"Error: JSONL file {train_jsonl} not found. Please run tokenization (Step 1 -> 2 -> 3) first.", ""
         return
-    output_dir = resolve_path(os.path.join("output", experiment_name))
+    output_dir = os.path.join(get_outputs_root(), experiment_name)
     os.makedirs(output_dir, exist_ok=True)
     config_data = {
         "speaker_name": speaker_name_str,
@@ -522,7 +522,7 @@ presets = {
 
 def apply_preset(preset_name, experiment_name):
     if preset_name == "Latest Config" and experiment_name:
-        config_path = os.path.join("output", experiment_name, "training_config.json")
+        config_path = os.path.join(get_outputs_root(), experiment_name, "training_config.json")
         if os.path.exists(config_path):
             with open(config_path, "r") as f:
                 data = json.load(f)
@@ -532,8 +532,10 @@ def apply_preset(preset_name, experiment_name):
     return p["init_model"], p["lr"], p["epochs"], p["batch_size"], p["grad_acc"]
 
 def get_experiments():
-    if not os.path.exists("output"): return []
-    return [d for d in os.listdir("output") if os.path.isdir(os.path.join("output", d))]
+    root = get_outputs_root()
+    if not os.path.exists(root):
+        return []
+    return [d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d))]
 
 # ----------------- UI -----------------
 css = """

@@ -5,7 +5,7 @@ import time
 
 import gradio as gr
 
-from utils import resolve_path
+from utils import get_outputs_root, resolve_path
 
 
 def checkpoint_sort_key(output_path, exp_name, checkpoint_name):
@@ -25,7 +25,7 @@ def checkpoint_sort_key(output_path, exp_name, checkpoint_name):
 
 
 def get_checkpoints(experiment_name=None, include_specials=True):
-    output_path = resolve_path("output")
+    output_path = get_outputs_root()
     ckpts = ["latest", "none"] if include_specials else []
 
     if not os.path.exists(output_path):
@@ -55,7 +55,7 @@ def normalize_resume_checkpoint(resume_from_checkpoint):
     if resume_from_checkpoint == "none":
         return None
     if resume_from_checkpoint and resume_from_checkpoint != "latest" and not os.path.isabs(resume_from_checkpoint):
-        return resolve_path(os.path.join("output", resume_from_checkpoint))
+        return os.path.join(get_outputs_root(), resume_from_checkpoint)
     return resume_from_checkpoint
 
 
@@ -183,7 +183,7 @@ def get_deeplink_state(request: gr.Request):
 
 
 def load_experiment_config(experiment_name):
-    config_path = os.path.join("output", experiment_name, "training_config.json")
+    config_path = os.path.join(get_outputs_root(), experiment_name, "training_config.json")
     checkpoint_choices = gr.update(choices=get_checkpoints(experiment_name=experiment_name, include_specials=True))
     if os.path.exists(config_path):
         try:
@@ -225,7 +225,7 @@ def on_new_experiment(name, get_experiments_fn):
         return [gr.update()] * 14 + ["Error: Experiment name cannot be empty.", gr.update()]
 
     name = name.strip()
-    output_dir = resolve_path(os.path.join("output", name))
+    output_dir = os.path.join(get_outputs_root(), name)
 
     if os.path.exists(output_dir):
         res = list(load_experiment_config(name))

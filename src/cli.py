@@ -17,7 +17,7 @@ import sys
 import json
 import time
 import argparse
-from utils import get_model_path, get_project_root, resolve_path, resolve_speaker_choice
+from utils import get_model_path, get_outputs_root, get_project_root, resolve_path, resolve_speaker_choice
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -199,7 +199,7 @@ def cmd_train(args):
         print("  Please run `python cli.py prepare` or `python cli.py tokenize` first.")
         sys.exit(1)
 
-    output_dir = resolve_path(os.path.join("output", args.experiment_name))
+    output_dir = os.path.join(get_outputs_root(args.output_root), args.experiment_name)
     os.makedirs(output_dir, exist_ok=True)
 
     # Save config
@@ -539,6 +539,12 @@ Examples:
     p_train.add_argument("--save_steps", type=int, default=200, help="Save step checkpoint every N global steps")
     p_train.add_argument("--keep_last_n_checkpoints", type=int, default=3, help="Keep last N checkpoints per save type")
     p_train.add_argument("--use_accelerator", action="store_true", default=False, help="Use accelerate when available")
+    p_train.add_argument(
+        "--output_root",
+        type=str,
+        default=None,
+        help="Parent directory for checkpoints (default: FINETUNE_OUTPUT_DIR env, else Docker /workspace/output when FINETUNE_BASE is finetune-repo, else <project>/output)",
+    )
 
     # ── infer ──
     p_infer = subparsers.add_parser("infer", help="Run inference on a trained checkpoint")
