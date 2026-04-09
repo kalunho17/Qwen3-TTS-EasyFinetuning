@@ -3,12 +3,16 @@ import uuid
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.responses import FileResponse
-from src.cli import main as cli_main # Import the existing CLI logic
+import sys
 
-app = FastAPI(title="Qwen3-TTS Inference Service")
+# Ensure the library is in the path
+sys.path.append("/workspace/finetune-repo")
+from src.cli import main as cli_main
 
-# Configuration via Environment Variables
-CHECKPOINT = os.getenv("INFERENCE_CHECKPOINT", "/workspace/output/maxpayne/checkpoint-step-200")
+app = FastAPI(title="Qwen3-TTS API")
+
+# Default settings from environment variables
+CHECKPOINT = os.getenv("INFERENCE_CHECKPOINT", "")
 SPEAKER = os.getenv("INFERENCE_SPEAKER", "my_speaker")
 OUTPUT_DIR = "/workspace/output/api_results"
 
@@ -18,15 +22,16 @@ class TTSRequest(BaseModel):
     text: str
     language: str = "English"
 
-@app.post("/generate")
-async def generate_audio(request: TTSRequest):
-    output_filename = f"{uuid.uuid4()}.wav"
-    output_path = os.path.join(OUTPUT_DIR, output_filename)
+@app.post("/infer")
+async def infer(request: TTSRequest):
+    if not CHECKPOINT:
+        raise HTTPException(status_code=500, detail="INFERENCE_CHECKPOINT env var not set.")
     
-    # We call the CLI logic programmatically 
-    # This ensures we use the exact same preprocessing/inference pipeline
+    filename = f"api_{uuid.uuid4().hex}.wav"
+    output_path = os.path.join(OUTPUT_DIR, filename)
+    
     try:
-        # Construct arguments as if they were passed via terminal
+        # Programmatically calling your CLI logic
         args = [
             "infer",
             "--checkpoint", CHECKPOINT,
@@ -35,15 +40,11 @@ async def generate_audio(request: TTSRequest):
             "--output", output_path,
             "--language", request.language
         ]
-        
-        # Note: In a high-load scenario, you'd want to refactor cli.py 
-        # to load the model into a global variable instead of re-running main()
-        cli_main(args) 
-        
-        return FileResponse(output_path, media_type="audio/wav", filename=output_filename)
+        cli_main(args)
+        return FileResponse(output_path, media_type="audio/wav")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health():
-    return {"status": "ready", "model": CHECKPOINT}
+    return {"status": "online", "checkpoint": CHECKPOINT}
