@@ -222,12 +222,52 @@ python src/cli.py infer-batch \
   --language English
 ```
 
+### 4. HTTP inference API (`src/api.py`)
+
+A small **FastAPI** service exposes TTS generation and optional **runtime checkpoint switching** (list projects/checkpoints, load one model, unload to free VRAM).
+
+**Environment variables**
+
+| Variable | Description |
+|----------|-------------|
+| `INFERENCE_CHECKPOINT` | Either a **full checkpoint directory** (basename starts with `checkpoint-`, e.g. `/workspace/output/maxpayne/checkpoint-step-200`) to load at startup, or the **output parent directory** (e.g. `/workspace/output`) so the process starts with no model until you call `POST /checkpoint/load`. |
+| `INFERENCE_SPEAKER` | Speaker name passed to inference (same idea as CLI `--speaker`). |
+| `GPU_DEVICE` | Device string, default `cuda:0`. |
+
+**Docker example (output root + load via API)**
+
+Mount your training output tree on `/workspace/output` so paths like `maxpayne/checkpoint-step-200` exist inside the container:
+
+```bash
+docker run -dt --gpus all \
+  --name qwen3tts-api \
+  -p 8001:8000 \
+  -e INFERENCE_CHECKPOINT="/workspace/output" \
+  -e INFERENCE_SPEAKER="my_speaker" \
+  -v "$(pwd)/src/api.py:/workspace/finetune-repo/src/api.py" \
+  -v /data/outputs/qwen3tts-train:/workspace/output \
+  -v /data/models:/workspace/models \
+  qwen3-tts-train:cuda uvicorn src.api:app --host 0.0.0.0 --port 8000
+```
+
+**Endpoints**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | `status`: `ready` if a checkpoint is loaded, else `no_model`; includes `output_root`, `loaded_checkpoint`, `speaker`. |
+| `GET` | `/checkpoint/inventory` | Lists `projects` under the output root; each project has `checkpoints` (`checkpoint-step-*` / `checkpoint-epoch-*` folders), newest-first when `trainer_state.json` is present. |
+| `POST` | `/checkpoint/load` | JSON body: `{ "project": "<experiment_dir>", "checkpoint": "<checkpoint_dir>" }` (e.g. `maxpayne` and `checkpoint-step-250`). Replaces any currently loaded model. |
+| `POST` | `/checkpoint/load-path` | JSON body: `{ "relative_path": "maxpayne/checkpoint-step-250" }` (path under the same output root). |
+| `POST` | `/checkpoint/unload` | Drops the in-memory model and clears GPU cache. |
+| `POST` | `/generate` | JSON body: `{ "text": "...", "language": "English", "instruct": null }`; returns a WAV file. Requires a loaded checkpoint (503 if none). |
+
 ---
 
 ## 📂 Project Structure
 
 *   `src/webui.py`: Main Gradio interface.
 *   `src/cli.py`: Unified command-line interface.
+*   `src/api.py`: FastAPI inference service with optional dynamic checkpoint load/unload.
 *   `src/sft_12hz.py`: Core fine-tuning logic.
 *   `src/step1_audio_split.py`: Audio preprocessing & segmentation.
 *   `src/step2_asr_clean.py`: Automatic transcription & labeling.
